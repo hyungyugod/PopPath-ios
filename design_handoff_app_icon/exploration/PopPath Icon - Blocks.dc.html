@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;500;600;700&family=Nunito:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;}
+body{margin:0;}
+@keyframes ppkFloat{0%,100%{transform:translateY(0);}50%{transform:translateY(-7px);}}
+</style>
+</helmet>
+<div style="width:max-content;min-width:100%;min-height:100vh;box-sizing:border-box;padding:60px 56px 80px;background:radial-gradient(120% 80% at 50% -10%, #F1EDE5 0%, #E7E2DA 60%, #E2DCD3 100%);font-family:Nunito,sans-serif;color:#2F3942;-webkit-font-smoothing:antialiased;">
+
+  <div style="max-width:1180px;margin:0 auto 14px;">
+    <div style="display:inline-flex;align-items:center;gap:8px;background:rgba(143,216,181,.22);color:#3F7A5E;font-family:Fredoka;font-weight:600;font-size:13px;letter-spacing:.08em;text-transform:uppercase;padding:7px 14px;border-radius:100px;margin-bottom:20px;white-space:nowrap;">네모 연달아 · 화살표 없이</div>
+    <h1 style="font-family:Fredoka;font-weight:700;font-size:46px;line-height:1;margin:0;letter-spacing:-.02em;color:#2F3942;">블록의 길 — 화살표 대안</h1>
+    <p style="font-family:Fredoka;font-weight:500;font-size:18px;color:#4A5A66;margin:16px 0 0;line-height:1.5;">이어지는 블록은 그대로. 화살표 대신 <b>선두 블록을 강조하는 방식</b>만 다르게 풀었습니다.</p>
+    <p style="font-size:14px;color:#7E878E;margin:10px 0 0;max-width:660px;line-height:1.6;">대각선으로 올라가는 배치 자체가 ‘길이 위로 열린다’를 말해주기 때문에, 화살표가 없어도 방향감은 살아 있습니다.</p>
+  </div>
+
+  <div style="display:flex;gap:36px;align-items:flex-start;padding-top:34px;">
+
+    <!-- ===== 1 — Pop Ring ===== -->
+    <div style="flex:none;width:352px;background:#FFFDF9;border:1px solid rgba(47,57,66,.05);border-radius:30px;padding:34px 32px 30px;box-shadow:0 2px 4px rgba(47,57,66,.04),0 26px 50px -32px rgba(47,57,66,.32);">
+      <div style="display:flex;align-items:baseline;gap:10px;margin-bottom:6px;">
+        <span style="font-family:Fredoka;font-weight:600;font-size:13px;letter-spacing:.12em;color:#8FB9A8;">1</span>
+        <span style="font-family:Fredoka;font-weight:600;font-size:22px;color:#2F3942;">Pop Ring</span>
+      </div>
+      <div style="font-size:13px;color:#7E878E;line-height:1.5;margin-bottom:26px;">선두 블록이 살짝 떠오르고 <b style="color:#4A5A66;">흰 링</b>으로 ‘지금 열림’. 가장 차분.</div>
+      <div style="display:flex;justify-content:center;margin-bottom:24px;">
+        <div style="width:240px;height:240px;border-radius:54px;background:linear-gradient(155deg,#83D4B2 0%,#5FBD97 100%);box-shadow:0 22px 44px -18px rgba(54,108,84,.55),inset 0 2px 0 rgba(255,255,255,.4);position:relative;overflow:hidden;animation:ppkFloat 6s ease-in-out infinite;">
+          <div style="position:absolute;left:36px;bottom:36px;width:76px;height:76px;border-radius:22px;background:#FBF8F2;box-shadow:0 10px 20px -8px rgba(40,80,64,.4),inset 0 2px 0 rgba(255,255,255,.7);"></div>
+          <div style="position:absolute;left:80px;bottom:80px;width:76px;height:76px;border-radius:22px;background:#FBF8F2;box-shadow:0 10px 20px -8px rgba(40,80,64,.4),inset 0 2px 0 rgba(255,255,255,.7);"></div>
+          <div style="position:absolute;left:124px;bottom:128px;width:76px;height:76px;border-radius:22px;background:#FFFFFF;box-shadow:0 0 0 6px rgba(255,255,255,.4),0 14px 24px -8px rgba(40,80,64,.45),inset 0 2px 0 rgba(255,255,255,.85);"></div>
+        </div>
+      </div>
+      <div style="height:1px;background:rgba(47,57,66,.07);margin:0 0 18px;"></div>
+      <div style="display:flex;align-items:center;gap:16px;">
+        <div style="font-size:11px;font-weight:800;letter-spacing:.08em;color:#7E878E;text-transform:uppercase;flex:none;">작게</div>
+        <div style="width:58px;height:58px;border-radius:13px;background:linear-gradient(155deg,#83D4B2,#5FBD97);overflow:hidden;position:relative;box-shadow:0 5px 12px -5px rgba(54,108,84,.5);"><div style="position:absolute;left:0;top:0;width:240px;height:240px;transform:scale(.2417);transform-origin:top left;"><div style="position:absolute;left:36px;bottom:36px;width:76px;height:76px;border-radius:22px;background:#FBF8F2;"></div><div style="position:absolute;left:80px;bottom:80px;width:76px;height:76px;border-radius:22px;background:#FBF8F2;"></div><div style="position:absolute;left:124px;bottom:128px;width:76px;height:76px;border-radius:22px;background:#FFFFFF;box-shadow:0 0 0 6px rgba(255,255,255,.4);"></div></div></div>
+      </div>
+    </div>
+
+    <!-- ===== 2 — Coral Lead ===== -->
+    <div style="flex:none;width:352px;background:#FFFDF9;border:1px solid rgba(47,57,66,.05);border-radius:30px;padding:34px 32px 30px;box-shadow:0 2px 4px rgba(47,57,66,.04),0 26px 50px -32px rgba(47,57,66,.32);">
+      <div style="display:flex;align-items:baseline;gap:10px;margin-bottom:6px;">
+        <span style="font-family:Fredoka;font-weight:600;font-size:13px;letter-spacing:.12em;color:#8FB9A8;">2</span>
+        <span style="font-family:Fredoka;font-weight:600;font-size:22px;color:#2F3942;">Coral Lead</span>
+      </div>
+      <div style="font-size:13px;color:#7E878E;line-height:1.5;margin-bottom:26px;">선두만 <b style="color:#4A5A66;">코랄 포인트</b>로. 색 하나로 또렷하게 — 가장 캐치함.</div>
+      <div style="display:flex;justify-content:center;margin-bottom:24px;">
+        <div style="width:240px;height:240px;border-radius:54px;background:linear-gradient(155deg,#83D4B2 0%,#5FBD97 100%);box-shadow:0 22px 44px -18px rgba(54,108,84,.55),inset 0 2px 0 rgba(255,255,255,.4);position:relative;overflow:hidden;animation:ppkFloat 6.4s ease-in-out infinite;">
+          <div style="position:absolute;left:36px;bottom:36px;width:76px;height:76px;border-radius:22px;background:#FBF8F2;box-shadow:0 10px 20px -8px rgba(40,80,64,.4),inset 0 2px 0 rgba(255,255,255,.7);"></div>
+          <div style="position:absolute;left:80px;bottom:80px;width:76px;height:76px;border-radius:22px;background:#FBF8F2;box-shadow:0 10px 20px -8px rgba(40,80,64,.4),inset 0 2px 0 rgba(255,255,255,.7);"></div>
+          <div style="position:absolute;left:124px;bottom:124px;width:76px;height:76px;border-radius:22px;background:#F3A38A;box-shadow:0 14px 24px -8px rgba(150,70,55,.45),inset 0 2px 0 rgba(255,255,255,.45);"></div>
+        </div>
+      </div>
+      <div style="height:1px;background:rgba(47,57,66,.07);margin:0 0 18px;"></div>
+      <div style="display:flex;align-items:center;gap:16px;">
+        <div style="font-size:11px;font-weight:800;letter-spacing:.08em;color:#7E878E;text-transform:uppercase;flex:none;">작게</div>
+        <div style="width:58px;height:58px;border-radius:13px;background:linear-gradient(155deg,#83D4B2,#5FBD97);overflow:hidden;position:relative;box-shadow:0 5px 12px -5px rgba(54,108,84,.5);"><div style="position:absolute;left:0;top:0;width:240px;height:240px;transform:scale(.2417);transform-origin:top left;"><div style="position:absolute;left:36px;bottom:36px;width:76px;height:76px;border-radius:22px;background:#FBF8F2;"></div><div style="position:absolute;left:80px;bottom:80px;width:76px;height:76px;border-radius:22px;background:#FBF8F2;"></div><div style="position:absolute;left:124px;bottom:124px;width:76px;height:76px;border-radius:22px;background:#F3A38A;"></div></div></div>
+      </div>
+    </div>
+
+    <!-- ===== 3 — Lift Off ===== -->
+    <div style="flex:none;width:352px;background:#FFFDF9;border:1px solid rgba(47,57,66,.05);border-radius:30px;padding:34px 32px 30px;box-shadow:0 2px 4px rgba(47,57,66,.04),0 26px 50px -32px rgba(47,57,66,.32);">
+      <div style="display:flex;align-items:baseline;gap:10px;margin-bottom:6px;">
+        <span style="font-family:Fredoka;font-weight:600;font-size:13px;letter-spacing:.12em;color:#8FB9A8;">3</span>
+        <span style="font-family:Fredoka;font-weight:600;font-size:22px;color:#2F3942;">Lift Off</span>
+      </div>
+      <div style="font-size:13px;color:#7E878E;line-height:1.5;margin-bottom:26px;">선두가 <b style="color:#4A5A66;">간격을 두고 떠오름</b>. 블록이 길을 빠져나가는 순간.</div>
+      <div style="display:flex;justify-content:center;margin-bottom:24px;">
+        <div style="width:240px;height:240px;border-radius:54px;background:linear-gradient(155deg,#83D4B2 0%,#5FBD97 100%);box-shadow:0 22px 44px -18px rgba(54,108,84,.55),inset 0 2px 0 rgba(255,255,255,.4);position:relative;overflow:hidden;animation:ppkFloat 6.8s ease-in-out infinite;">
+          <div style="position:absolute;left:38px;bottom:34px;width:72px;height:72px;border-radius:21px;background:#FBF8F2;opacity:.62;box-shadow:0 8px 16px -8px rgba(40,80,64,.35),inset 0 2px 0 rgba(255,255,255,.6);"></div>
+          <div style="position:absolute;left:78px;bottom:76px;width:74px;height:74px;border-radius:21px;background:#FBF8F2;box-shadow:0 10px 20px -8px rgba(40,80,64,.4),inset 0 2px 0 rgba(255,255,255,.7);"></div>
+          <div style="position:absolute;left:124px;bottom:148px;width:78px;height:78px;border-radius:22px;background:#FFFFFF;box-shadow:0 20px 30px -10px rgba(40,80,64,.5),inset 0 2px 0 rgba(255,255,255,.85);"></div>
+        </div>
+      </div>
+      <div style="height:1px;background:rgba(47,57,66,.07);margin:0 0 18px;"></div>
+      <div style="display:flex;align-items:center;gap:16px;">
+        <div style="font-size:11px;font-weight:800;letter-spacing:.08em;color:#7E878E;text-transform:uppercase;flex:none;">작게</div>
+        <div style="width:58px;height:58px;border-radius:13px;background:linear-gradient(155deg,#83D4B2,#5FBD97);overflow:hidden;position:relative;box-shadow:0 5px 12px -5px rgba(54,108,84,.5);"><div style="position:absolute;left:0;top:0;width:240px;height:240px;transform:scale(.2417);transform-origin:top left;"><div style="position:absolute;left:38px;bottom:34px;width:72px;height:72px;border-radius:21px;background:#FBF8F2;opacity:.62;"></div><div style="position:absolute;left:78px;bottom:76px;width:74px;height:74px;border-radius:21px;background:#FBF8F2;"></div><div style="position:absolute;left:124px;bottom:148px;width:78px;height:78px;border-radius:22px;background:#FFFFFF;box-shadow:0 6px 10px -4px rgba(40,80,64,.45);"></div></div></div>
+      </div>
+    </div>
+
+  </div>
+
+  <div style="margin-top:36px;text-align:center;font-family:Fredoka;font-weight:500;font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:rgba(126,135,142,.5);">HG creation</div>
+
+</div>
+</x-dc>
+</body>
+</html>

@@ -1,0 +1,461 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;500;600;700&family=Nunito:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;}
+body{margin:0;}
+@keyframes ppPulse{0%,100%{box-shadow:0 0 0 3px rgba(143,216,181,.95),0 5px 12px rgba(76,110,96,.22);}50%{box-shadow:0 0 0 7px rgba(143,216,181,.4),0 6px 15px rgba(76,110,96,.26);}}
+@keyframes ppShake{0%,100%{transform:translateX(0);}25%{transform:translateX(-4px);}75%{transform:translateX(4px);}}
+@keyframes ppFloat{0%,100%{transform:translateY(0);}50%{transform:translateY(-5px);}}
+@keyframes ppRing{0%{transform:scale(.75);opacity:.7;}100%{transform:scale(1.6);opacity:0;}}
+</style>
+</helmet>
+<div style="min-height:100vh;background:radial-gradient(120% 80% at 50% -10%, #F1EDE5 0%, #E7E2DA 60%, #E2DCD3 100%);font-family:Nunito,sans-serif;color:#2F3942;padding:60px 48px 90px;-webkit-font-smoothing:antialiased;">
+
+<div style="max-width:1340px;margin:0 auto;">
+
+<!-- ============ HEADER ============ -->
+<div style="background:linear-gradient(160deg,#FBF8F2 0%,#F4EEE3 100%);border:1px solid rgba(47,57,66,.05);border-radius:36px;padding:54px 56px;box-shadow:0 2px 4px rgba(47,57,66,.04),0 30px 60px -34px rgba(47,57,66,.35);position:relative;overflow:hidden;">
+  <div style="position:absolute;right:-40px;top:-30px;width:280px;height:280px;border-radius:50%;background:radial-gradient(circle,rgba(143,216,181,.28),rgba(143,216,181,0) 70%);"></div>
+  <div style="position:absolute;right:120px;bottom:-60px;width:220px;height:220px;border-radius:50%;background:radial-gradient(circle,rgba(175,200,218,.3),rgba(175,200,218,0) 70%);"></div>
+  <div style="position:relative;display:flex;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;gap:32px;">
+    <div style="max-width:680px;">
+      <div style="display:inline-flex;align-items:center;gap:8px;background:rgba(143,216,181,.22);color:#3F7A5E;font-family:Fredoka;font-weight:600;font-size:13px;letter-spacing:.08em;text-transform:uppercase;padding:7px 14px;border-radius:100px;margin-bottom:22px;">Comfortable Casual Puzzle · Visual Direction</div>
+      <h1 style="font-family:Fredoka;font-weight:700;font-size:74px;line-height:.98;margin:0;letter-spacing:-.02em;color:#2F3942;">PopPath<span style="color:#F3A38A;">!</span></h1>
+      <p style="font-family:Fredoka;font-weight:500;font-size:21px;color:#4A5A66;margin:18px 0 0;line-height:1.45;">편안한 배경 위에서 화살표 블록이 부드럽게 길을 열고,<br>체인이 은은하게 터지는 캐주얼 퍼즐.</p>
+      <p style="font-size:15px;color:#7E878E;margin:16px 0 0;max-width:560px;line-height:1.6;">자극으로 붙잡는 게임이 아니라 <b style="color:#4A5A66;">흐름으로 한 판 더</b> 하게 만드는 게임. 화면은 차분하게, 인터랙션은 경쾌하게.</p>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:10px;">
+      <div style="display:flex;gap:10px;">
+        <div style="background:#FFFDF9;border:1px solid rgba(47,57,66,.07);border-radius:16px;padding:14px 20px;text-align:center;box-shadow:0 6px 16px -10px rgba(47,57,66,.25);"><div style="font-family:Fredoka;font-weight:700;font-size:26px;color:#2F3942;">90s</div><div style="font-size:11px;color:#7E878E;letter-spacing:.05em;text-transform:uppercase;margin-top:2px;">per round</div></div>
+        <div style="background:#FFFDF9;border:1px solid rgba(47,57,66,.07);border-radius:16px;padding:14px 20px;text-align:center;box-shadow:0 6px 16px -10px rgba(47,57,66,.25);"><div style="font-family:Fredoka;font-weight:700;font-size:26px;color:#2F3942;">6×7</div><div style="font-size:11px;color:#7E878E;letter-spacing:.05em;text-transform:uppercase;margin-top:2px;">board</div></div>
+        <div style="background:#FFFDF9;border:1px solid rgba(47,57,66,.07);border-radius:16px;padding:14px 20px;text-align:center;box-shadow:0 6px 16px -10px rgba(47,57,66,.25);"><div style="font-family:Fredoka;font-weight:700;font-size:26px;color:#2F3942;">iOS</div><div style="font-size:11px;color:#7E878E;letter-spacing:.05em;text-transform:uppercase;margin-top:2px;">first</div></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ FOUNDATIONS ============ -->
+<div style="margin-top:64px;margin-bottom:28px;">
+  <div style="font-family:Fredoka;font-weight:600;font-size:13px;letter-spacing:.14em;text-transform:uppercase;color:#8FB9A8;">01 — Foundations</div>
+  <div style="font-family:Fredoka;font-weight:600;font-size:30px;color:#2F3942;margin-top:6px;">컬러 · 타이포 · 모션의 기본 원칙</div>
+</div>
+
+<div style="display:grid;grid-template-columns:1.25fr 1fr;gap:24px;align-items:stretch;">
+
+  <!-- Color palette -->
+  <div style="background:#FFFDF9;border:1px solid rgba(47,57,66,.05);border-radius:28px;padding:30px;box-shadow:0 2px 4px rgba(47,57,66,.04),0 22px 44px -30px rgba(47,57,66,.3);">
+    <div style="font-family:Fredoka;font-weight:600;font-size:19px;margin-bottom:4px;">Color Palette</div>
+    <div style="font-size:13px;color:#7E878E;margin-bottom:22px;line-height:1.5;">전체 채도는 낮게, 상호작용 하이라이트만 선명하게. 눈이 편해야 계속 플레이한다.</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
+      <div style="display:flex;gap:12px;align-items:center;"><div style="width:46px;height:46px;border-radius:13px;background:#F7F4EE;border:1px solid rgba(47,57,66,.1);flex:none;"></div><div><div style="font-family:Fredoka;font-weight:600;font-size:14px;">Warm Cream</div><div style="font-size:11px;color:#7E878E;font-variant-numeric:tabular-nums;">#F7F4EE · 배경</div></div></div>
+      <div style="display:flex;gap:12px;align-items:center;"><div style="width:46px;height:46px;border-radius:13px;background:#DDEBE4;border:1px solid rgba(47,57,66,.06);flex:none;"></div><div><div style="font-family:Fredoka;font-weight:600;font-size:14px;">Soft Sage</div><div style="font-size:11px;color:#7E878E;font-variant-numeric:tabular-nums;">#DDEBE4 · 게임판</div></div></div>
+      <div style="display:flex;gap:12px;align-items:center;"><div style="width:46px;height:46px;border-radius:13px;background:#AFC8DA;flex:none;box-shadow:0 4px 9px rgba(47,57,66,.12);"></div><div><div style="font-family:Fredoka;font-weight:600;font-size:14px;">Mist Blue</div><div style="font-size:11px;color:#7E878E;font-variant-numeric:tabular-nums;">#AFC8DA · 기본 블록</div></div></div>
+      <div style="display:flex;gap:12px;align-items:center;"><div style="width:46px;height:46px;border-radius:13px;background:#C9C2E8;flex:none;box-shadow:0 4px 9px rgba(47,57,66,.12);"></div><div><div style="font-family:Fredoka;font-weight:600;font-size:14px;">Lavender Mist</div><div style="font-size:11px;color:#7E878E;font-variant-numeric:tabular-nums;">#C9C2E8 · 보조 블록</div></div></div>
+      <div style="display:flex;gap:12px;align-items:center;"><div style="width:46px;height:46px;border-radius:13px;background:#8FD8B5;flex:none;box-shadow:0 4px 9px rgba(76,110,96,.18);"></div><div><div style="font-family:Fredoka;font-weight:600;font-size:14px;">Fresh Mint</div><div style="font-size:11px;color:#7E878E;font-variant-numeric:tabular-nums;">#8FD8B5 · Open Chain</div></div></div>
+      <div style="display:flex;gap:12px;align-items:center;"><div style="width:46px;height:46px;border-radius:13px;background:#F3A38A;flex:none;box-shadow:0 4px 9px rgba(160,90,70,.18);"></div><div><div style="font-family:Fredoka;font-weight:600;font-size:14px;">Soft Coral</div><div style="font-size:11px;color:#7E878E;font-variant-numeric:tabular-nums;">#F3A38A · Perfect</div></div></div>
+      <div style="display:flex;gap:12px;align-items:center;"><div style="width:46px;height:46px;border-radius:13px;background:#2F3942;flex:none;"></div><div><div style="font-family:Fredoka;font-weight:600;font-size:14px;">Ink Gray</div><div style="font-size:11px;color:#7E878E;font-variant-numeric:tabular-nums;">#2F3942 · 텍스트</div></div></div>
+      <div style="display:flex;gap:12px;align-items:center;"><div style="width:46px;height:46px;border-radius:13px;background:#7E878E;flex:none;"></div><div><div style="font-family:Fredoka;font-weight:600;font-size:14px;">Warm Gray</div><div style="font-size:11px;color:#7E878E;font-variant-numeric:tabular-nums;">#7E878E · 보조 텍스트</div></div></div>
+    </div>
+  </div>
+
+  <!-- Typography + Motion stacked -->
+  <div style="display:flex;flex-direction:column;gap:24px;">
+    <div style="background:#FFFDF9;border:1px solid rgba(47,57,66,.05);border-radius:28px;padding:30px;box-shadow:0 2px 4px rgba(47,57,66,.04),0 22px 44px -30px rgba(47,57,66,.3);">
+      <div style="font-family:Fredoka;font-weight:600;font-size:19px;margin-bottom:18px;">Typography</div>
+      <div style="display:flex;align-items:baseline;justify-content:space-between;border-bottom:1px solid rgba(47,57,66,.07);padding-bottom:14px;margin-bottom:14px;">
+        <div style="font-family:Fredoka;font-weight:700;font-size:34px;">PopPath<span style="color:#F3A38A;">!</span></div>
+        <div style="font-size:11px;color:#7E878E;text-align:right;">Fredoka 700<br>로고 · 디스플레이</div>
+      </div>
+      <div style="display:flex;align-items:baseline;justify-content:space-between;border-bottom:1px solid rgba(47,57,66,.07);padding-bottom:14px;margin-bottom:14px;">
+        <div style="font-family:Fredoka;font-weight:600;font-size:30px;font-variant-numeric:tabular-nums;letter-spacing:.01em;">1,240 · ×7</div>
+        <div style="font-size:11px;color:#7E878E;text-align:right;">Fredoka 600<br>HUD 숫자</div>
+      </div>
+      <div style="display:flex;align-items:baseline;justify-content:space-between;">
+        <div style="font-size:15px;color:#4A5A66;max-width:240px;line-height:1.5;">짧고 간결한 본문. 튜토리얼은 한 줄을 넘기지 않는다.</div>
+        <div style="font-size:11px;color:#7E878E;text-align:right;white-space:nowrap;">Nunito 400–700<br>본문 · UI</div>
+      </div>
+    </div>
+
+    <div style="background:#FFFDF9;border:1px solid rgba(47,57,66,.05);border-radius:28px;padding:30px;box-shadow:0 2px 4px rgba(47,57,66,.04),0 22px 44px -30px rgba(47,57,66,.3);flex:1;">
+      <div style="font-family:Fredoka;font-weight:600;font-size:19px;margin-bottom:16px;">Motion — 빠르지만 편안하게</div>
+      <div style="display:flex;flex-direction:column;gap:11px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;"><span style="font-size:14px;">블록 탈출</span><span style="font-family:Fredoka;font-weight:600;font-size:13px;color:#3F7A5E;background:rgba(143,216,181,.2);padding:3px 11px;border-radius:100px;">180–240ms · ease-out</span></div>
+        <div style="display:flex;justify-content:space-between;align-items:center;"><span style="font-size:14px;">Open Chain 펄스</span><span style="font-family:Fredoka;font-weight:600;font-size:13px;color:#3F7A5E;background:rgba(143,216,181,.2);padding:3px 11px;border-radius:100px;">0.8–1.2s · loop</span></div>
+        <div style="display:flex;justify-content:space-between;align-items:center;"><span style="font-size:14px;">Pop Burst</span><span style="font-family:Fredoka;font-weight:600;font-size:13px;color:#3F7A5E;background:rgba(143,216,181,.2);padding:3px 11px;border-radius:100px;">350–500ms · 파동</span></div>
+        <div style="display:flex;justify-content:space-between;align-items:center;"><span style="font-size:14px;">Miss</span><span style="font-family:Fredoka;font-weight:600;font-size:13px;color:#A8674F;background:rgba(243,163,138,.22);padding:3px 11px;border-radius:100px;">120–180ms · shake</span></div>
+      </div>
+      <div style="height:1px;background:rgba(47,57,66,.07);margin:18px 0;"></div>
+      <div style="display:flex;flex-wrap:wrap;gap:8px;">
+        <span style="font-family:Fredoka;font-weight:500;font-size:12px;background:#F4EEE3;color:#4A5A66;padding:6px 12px;border-radius:100px;">Soft Focus</span>
+        <span style="font-family:Fredoka;font-weight:500;font-size:12px;background:#F4EEE3;color:#4A5A66;padding:6px 12px;border-radius:100px;">Gentle Pop</span>
+        <span style="font-family:Fredoka;font-weight:500;font-size:12px;background:#F4EEE3;color:#4A5A66;padding:6px 12px;border-radius:100px;">Clear Path</span>
+        <span style="font-family:Fredoka;font-weight:500;font-size:12px;background:#F4EEE3;color:#4A5A66;padding:6px 12px;border-radius:100px;">One More Round</span>
+        <span style="font-family:Fredoka;font-weight:500;font-size:12px;background:#F4EEE3;color:#4A5A66;padding:6px 12px;border-radius:100px;">No Stress</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ CORE SCREENS ============ -->
+<div style="margin-top:72px;margin-bottom:30px;">
+  <div style="font-family:Fredoka;font-weight:600;font-size:13px;letter-spacing:.14em;text-transform:uppercase;color:#8FB9A8;">02 — Core Screens</div>
+  <div style="font-family:Fredoka;font-weight:600;font-size:30px;color:#2F3942;margin-top:6px;">핵심 화면 목업 · iPhone</div>
+  <div style="font-size:14px;color:#7E878E;margin-top:8px;">가운데 <b style="color:#3F7A5E;">Game</b> 화면은 실제로 플레이됩니다 — 탈출 가능한 블록(민트 링)을 탭하면 화살표 방향으로 빠져나갑니다.</div>
+</div>
+
+<div style="display:flex;flex-wrap:wrap;gap:40px 36px;justify-content:center;align-items:flex-start;">
+
+  <!-- ===== HOME ===== -->
+  <div style="display:flex;flex-direction:column;align-items:center;gap:16px;">
+    <div style="font-family:Fredoka;font-weight:600;font-size:13px;letter-spacing:.1em;text-transform:uppercase;color:#7E878E;">Home</div>
+    <div style="width:300px;height:620px;background:#23292E;border-radius:46px;padding:11px;box-shadow:0 36px 70px -26px rgba(34,42,47,.5),0 10px 24px rgba(34,42,47,.18);flex:none;">
+      <div style="width:100%;height:100%;background:#F7F4EE;border-radius:36px;overflow:hidden;position:relative;display:flex;flex-direction:column;">
+        <div style="position:absolute;top:11px;left:50%;transform:translateX(-50%);width:84px;height:25px;background:#23292E;border-radius:16px;z-index:20;"></div>
+        <div style="height:46px;flex:none;display:flex;align-items:flex-end;justify-content:space-between;padding:0 24px 5px;font-family:Fredoka;font-weight:600;font-size:13px;color:#2F3942;"><span>9:41</span><span style="letter-spacing:2px;font-size:10px;opacity:.8;">●●●</span></div>
+        <div style="flex:1;display:flex;flex-direction:column;align-items:center;padding:6px 26px 28px;">
+          <div style="flex:.6;"></div>
+          <div style="display:flex;gap:9px;margin-bottom:30px;">
+            <div style="width:44px;height:44px;border-radius:13px;background:#AFC8DA;display:flex;align-items:center;justify-content:center;color:#2F3942;font-size:18px;box-shadow:0 5px 11px rgba(47,57,66,.14);transform:rotate(-6deg);">▲</div>
+            <div style="width:44px;height:44px;border-radius:13px;background:#8FD8B5;display:flex;align-items:center;justify-content:center;color:#2F3942;font-size:18px;box-shadow:0 0 0 3px rgba(143,216,181,.9),0 5px 11px rgba(76,110,96,.2);transform:translateY(-6px);animation:ppFloat 2.6s ease-in-out infinite;">▶</div>
+            <div style="width:44px;height:44px;border-radius:13px;background:#C9C2E8;display:flex;align-items:center;justify-content:center;color:#2F3942;font-size:18px;box-shadow:0 5px 11px rgba(47,57,66,.14);transform:rotate(7deg);">◀</div>
+          </div>
+          <h2 style="font-family:Fredoka;font-weight:700;font-size:46px;margin:0;letter-spacing:-.02em;color:#2F3942;">PopPath<span style="color:#F3A38A;">!</span></h2>
+          <div style="font-family:Fredoka;font-weight:500;font-size:14px;color:#7E878E;margin-top:6px;">Open the path. Pop the chain.</div>
+          <div style="flex:1;"></div>
+          <div style="display:flex;align-items:center;gap:8px;background:#DDEBE4;border-radius:100px;padding:8px 18px;margin-bottom:18px;"><span style="font-size:12px;color:#5C7A6C;font-weight:700;letter-spacing:.04em;">BEST</span><span style="font-family:Fredoka;font-weight:700;font-size:17px;color:#2F3942;font-variant-numeric:tabular-nums;">1,240</span></div>
+          <div style="width:100%;height:62px;border-radius:22px;background:#8FD8B5;display:flex;align-items:center;justify-content:center;font-family:Fredoka;font-weight:600;font-size:22px;color:#23413A;box-shadow:0 10px 22px -8px rgba(76,110,96,.55),inset 0 1px 0 rgba(255,255,255,.4);">Play</div>
+          <div style="display:flex;gap:12px;margin-top:16px;">
+            <div style="width:46px;height:46px;border-radius:15px;background:#FFFDF9;border:1px solid rgba(47,57,66,.07);display:flex;align-items:center;justify-content:center;font-size:18px;box-shadow:0 4px 10px -6px rgba(47,57,66,.3);">🔊</div>
+            <div style="width:46px;height:46px;border-radius:15px;background:#FFFDF9;border:1px solid rgba(47,57,66,.07);display:flex;align-items:center;justify-content:center;font-size:18px;box-shadow:0 4px 10px -6px rgba(47,57,66,.3);">⚙️</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== GAME (interactive) ===== -->
+  <div style="display:flex;flex-direction:column;align-items:center;gap:16px;">
+    <div style="font-family:Fredoka;font-weight:600;font-size:13px;letter-spacing:.1em;text-transform:uppercase;color:#3F7A5E;display:flex;align-items:center;gap:7px;">Game <span style="font-size:10px;background:rgba(143,216,181,.25);color:#3F7A5E;padding:2px 8px;border-radius:100px;letter-spacing:.04em;">● Live · 플레이 가능</span></div>
+    <div style="width:300px;height:620px;background:#23292E;border-radius:46px;padding:11px;box-shadow:0 40px 80px -24px rgba(34,42,47,.55),0 12px 28px rgba(34,42,47,.22);flex:none;">
+      <div style="width:100%;height:100%;background:#F7F4EE;border-radius:36px;overflow:hidden;position:relative;display:flex;flex-direction:column;">
+        <div style="position:absolute;top:11px;left:50%;transform:translateX(-50%);width:84px;height:25px;background:#23292E;border-radius:16px;z-index:20;"></div>
+        <div style="height:46px;flex:none;display:flex;align-items:flex-end;justify-content:space-between;padding:0 24px 5px;font-family:Fredoka;font-weight:600;font-size:13px;color:#2F3942;"><span>9:41</span><span style="letter-spacing:2px;font-size:10px;opacity:.8;">●●●</span></div>
+        <!-- HUD -->
+        <div style="display:flex;gap:8px;padding:6px 16px 0;">
+          <div style="flex:1;background:#FFFDF9;border-radius:15px;padding:9px 4px;text-align:center;box-shadow:0 5px 13px -8px rgba(47,57,66,.35);"><div style="font-size:9px;font-weight:800;letter-spacing:.1em;color:#7E878E;">SCORE</div><div style="font-family:Fredoka;font-weight:700;font-size:21px;color:#2F3942;font-variant-numeric:tabular-nums;">{{ scoreStr }}</div></div>
+          <div style="flex:1;background:#FFFDF9;border-radius:15px;padding:9px 4px;text-align:center;box-shadow:0 5px 13px -8px rgba(47,57,66,.35);"><div style="font-size:9px;font-weight:800;letter-spacing:.1em;color:#7E878E;">TIME</div><div style="font-family:Fredoka;font-weight:700;font-size:21px;color:#2F3942;font-variant-numeric:tabular-nums;">{{ timeStr }}</div></div>
+          <div style="flex:1;background:#FFFDF9;border-radius:15px;padding:9px 4px;text-align:center;box-shadow:0 5px 13px -8px rgba(47,57,66,.35);"><div style="font-size:9px;font-weight:800;letter-spacing:.1em;color:#3F7A5E;">CHAIN</div><div style="font-family:Fredoka;font-weight:700;font-size:21px;color:#3F7A5E;font-variant-numeric:tabular-nums;">×{{ chain }}</div></div>
+        </div>
+        <!-- Board -->
+        <div style="flex:1;margin:14px 16px;background:#DDEBE4;border-radius:24px;padding:11px;display:grid;grid-template-columns:repeat(6,1fr);gap:7px;align-content:center;box-shadow:inset 0 2px 8px rgba(76,110,96,.12);">
+          <sc-for list="{{ cells }}" as="cell" hint-placeholder-count="42">
+            <div onClick="{{ cell.onTap }}" style="aspect-ratio:1;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:17px;cursor:pointer;transition:transform .22s cubic-bezier(.2,.7,.3,1),opacity .22s ease,box-shadow .25s ease;background:{{ cell.bg }};color:{{ cell.fg }};box-shadow:{{ cell.shadow }};transform:{{ cell.transform }};opacity:{{ cell.opacity }};animation:{{ cell.anim }};">{{ cell.arrow }}</div>
+          </sc-for>
+        </div>
+        <!-- footer -->
+        <div style="flex:none;display:flex;align-items:center;justify-content:space-between;padding:0 22px 22px;">
+          <div style="font-size:12px;color:#7E878E;font-weight:700;">BEST <span style="color:#2F3942;font-family:Fredoka;font-variant-numeric:tabular-nums;">{{ best }}</span></div>
+          <div onClick="{{ tapReset }}" style="display:flex;align-items:center;gap:6px;background:#FFFDF9;border:1px solid rgba(47,57,66,.07);border-radius:100px;padding:7px 14px;font-family:Fredoka;font-weight:600;font-size:13px;color:#4A5A66;cursor:pointer;box-shadow:0 4px 10px -6px rgba(47,57,66,.3);">↻ New board</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== RESULT ===== -->
+  <div style="display:flex;flex-direction:column;align-items:center;gap:16px;">
+    <div style="font-family:Fredoka;font-weight:600;font-size:13px;letter-spacing:.1em;text-transform:uppercase;color:#7E878E;">Result</div>
+    <div style="width:300px;height:620px;background:#23292E;border-radius:46px;padding:11px;box-shadow:0 36px 70px -26px rgba(34,42,47,.5),0 10px 24px rgba(34,42,47,.18);flex:none;">
+      <div style="width:100%;height:100%;background:#F7F4EE;border-radius:36px;overflow:hidden;position:relative;display:flex;flex-direction:column;">
+        <div style="position:absolute;top:11px;left:50%;transform:translateX(-50%);width:84px;height:25px;background:#23292E;border-radius:16px;z-index:20;"></div>
+        <div style="height:46px;flex:none;display:flex;align-items:flex-end;justify-content:space-between;padding:0 24px 5px;font-family:Fredoka;font-weight:600;font-size:13px;color:#2F3942;"><span>9:41</span><span style="letter-spacing:2px;font-size:10px;opacity:.8;">●●●</span></div>
+        <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:0 28px 28px;">
+          <div style="font-family:Fredoka;font-weight:500;font-size:15px;color:#7E878E;letter-spacing:.04em;">Time's up</div>
+          <div style="font-family:Fredoka;font-weight:600;font-size:24px;color:#2F3942;margin-top:2px;">Nice run!</div>
+          <div style="font-family:Fredoka;font-weight:700;font-size:72px;color:#2F3942;line-height:1;margin:22px 0 6px;font-variant-numeric:tabular-nums;">1,480</div>
+          <div style="font-size:12px;color:#7E878E;font-weight:700;letter-spacing:.06em;">SCORE</div>
+          <div style="display:flex;gap:10px;margin:26px 0 32px;width:100%;">
+            <div style="flex:1;background:#DDEBE4;border-radius:18px;padding:14px 8px;text-align:center;"><div style="font-family:Fredoka;font-weight:700;font-size:22px;color:#2F3942;font-variant-numeric:tabular-nums;">1,480</div><div style="font-size:10px;color:#5C7A6C;font-weight:800;letter-spacing:.08em;margin-top:3px;">BEST</div></div>
+            <div style="flex:1;background:#DDEBE4;border-radius:18px;padding:14px 8px;text-align:center;"><div style="font-family:Fredoka;font-weight:700;font-size:22px;color:#3F7A5E;font-variant-numeric:tabular-nums;">×9</div><div style="font-size:10px;color:#5C7A6C;font-weight:800;letter-spacing:.08em;margin-top:3px;">MAX CHAIN</div></div>
+          </div>
+          <div style="width:100%;height:64px;border-radius:22px;background:#8FD8B5;display:flex;align-items:center;justify-content:center;font-family:Fredoka;font-weight:600;font-size:23px;color:#23413A;box-shadow:0 12px 24px -8px rgba(76,110,96,.55),inset 0 1px 0 rgba(255,255,255,.4);">Retry</div>
+          <div style="font-family:Fredoka;font-weight:600;font-size:15px;color:#7E878E;margin-top:18px;">Home</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== TUTORIAL ===== -->
+  <div style="display:flex;flex-direction:column;align-items:center;gap:16px;">
+    <div style="font-family:Fredoka;font-weight:600;font-size:13px;letter-spacing:.1em;text-transform:uppercase;color:#7E878E;">Tutorial</div>
+    <div style="width:300px;height:620px;background:#23292E;border-radius:46px;padding:11px;box-shadow:0 36px 70px -26px rgba(34,42,47,.5),0 10px 24px rgba(34,42,47,.18);flex:none;">
+      <div style="width:100%;height:100%;background:#F7F4EE;border-radius:36px;overflow:hidden;position:relative;display:flex;flex-direction:column;">
+        <div style="position:absolute;top:11px;left:50%;transform:translateX(-50%);width:84px;height:25px;background:#23292E;border-radius:16px;z-index:20;"></div>
+        <div style="height:46px;flex:none;display:flex;align-items:flex-end;justify-content:space-between;padding:0 24px 5px;font-family:Fredoka;font-weight:600;font-size:13px;color:#2F3942;"><span>9:41</span><span style="letter-spacing:2px;font-size:10px;opacity:.8;">●●●</span></div>
+        <div style="flex:1;position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:0 26px;">
+          <!-- mini board -->
+          <div style="background:#DDEBE4;border-radius:22px;padding:11px;display:grid;grid-template-columns:repeat(4,52px);grid-auto-rows:52px;gap:8px;box-shadow:inset 0 2px 8px rgba(76,110,96,.12);position:relative;">
+            <div style="border-radius:12px;background:#AFC8DA;display:flex;align-items:center;justify-content:center;font-size:18px;color:#2F3942;box-shadow:0 4px 8px rgba(47,57,66,.12);">▲</div>
+            <div style="border-radius:12px;background:rgba(47,57,66,.035);"></div>
+            <div style="border-radius:12px;background:#C9C2E8;display:flex;align-items:center;justify-content:center;font-size:18px;color:#2F3942;box-shadow:0 4px 8px rgba(47,57,66,.12);">▼</div>
+            <div style="border-radius:12px;background:#AFC8DA;display:flex;align-items:center;justify-content:center;font-size:18px;color:#2F3942;box-shadow:0 4px 8px rgba(47,57,66,.12);">◀</div>
+            <div style="border-radius:12px;background:rgba(47,57,66,.035);"></div>
+            <div style="position:relative;border-radius:12px;background:#8FD8B5;display:flex;align-items:center;justify-content:center;font-size:18px;color:#23413A;box-shadow:0 0 0 3px rgba(143,216,181,.95),0 5px 12px rgba(76,110,96,.22);animation:ppPulse 1.1s ease-in-out infinite;">▶
+              <div style="position:absolute;inset:-6px;border-radius:16px;border:2px solid #8FD8B5;animation:ppRing 1.6s ease-out infinite;"></div>
+              <!-- finger -->
+              <div style="position:absolute;right:-14px;bottom:-18px;font-size:30px;filter:drop-shadow(0 4px 6px rgba(47,57,66,.25));transform:rotate(-18deg);">👆</div>
+            </div>
+            <div style="border-radius:12px;background:#C9C2E8;display:flex;align-items:center;justify-content:center;font-size:18px;color:#2F3942;box-shadow:0 4px 8px rgba(47,57,66,.12);">▲</div>
+            <div style="border-radius:12px;background:#AFC8DA;display:flex;align-items:center;justify-content:center;font-size:18px;color:#2F3942;box-shadow:0 4px 8px rgba(47,57,66,.12);">▶</div>
+          </div>
+          <div style="margin-top:40px;background:#2F3942;color:#F7F4EE;font-family:Fredoka;font-weight:500;font-size:15px;padding:12px 20px;border-radius:100px;box-shadow:0 10px 20px -10px rgba(47,57,66,.5);">Tap the glowing block →</div>
+          <div style="font-size:12px;color:#7E878E;margin-top:14px;">길이 열리면 블록이 빛나요</div>
+        </div>
+        <div style="flex:none;display:flex;justify-content:center;gap:6px;padding:0 0 26px;">
+          <div style="width:22px;height:6px;border-radius:100px;background:#8FD8B5;"></div>
+          <div style="width:6px;height:6px;border-radius:100px;background:rgba(47,57,66,.15);"></div>
+          <div style="width:6px;height:6px;border-radius:100px;background:rgba(47,57,66,.15);"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== SETTINGS ===== -->
+  <div style="display:flex;flex-direction:column;align-items:center;gap:16px;">
+    <div style="font-family:Fredoka;font-weight:600;font-size:13px;letter-spacing:.1em;text-transform:uppercase;color:#7E878E;">Settings</div>
+    <div style="width:300px;height:620px;background:#23292E;border-radius:46px;padding:11px;box-shadow:0 36px 70px -26px rgba(34,42,47,.5),0 10px 24px rgba(34,42,47,.18);flex:none;">
+      <div style="width:100%;height:100%;background:#F7F4EE;border-radius:36px;overflow:hidden;position:relative;display:flex;flex-direction:column;">
+        <div style="position:absolute;top:11px;left:50%;transform:translateX(-50%);width:84px;height:25px;background:#23292E;border-radius:16px;z-index:20;"></div>
+        <div style="height:46px;flex:none;display:flex;align-items:flex-end;justify-content:space-between;padding:0 24px 5px;font-family:Fredoka;font-weight:600;font-size:13px;color:#2F3942;"><span>9:41</span><span style="letter-spacing:2px;font-size:10px;opacity:.8;">●●●</span></div>
+        <div style="flex:1;padding:8px 24px 28px;display:flex;flex-direction:column;">
+          <div style="display:flex;align-items:center;gap:12px;margin-bottom:26px;">
+            <div style="width:38px;height:38px;border-radius:13px;background:#FFFDF9;border:1px solid rgba(47,57,66,.07);display:flex;align-items:center;justify-content:center;font-family:Fredoka;font-size:18px;color:#4A5A66;">‹</div>
+            <div style="font-family:Fredoka;font-weight:600;font-size:24px;color:#2F3942;">Settings</div>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:12px;">
+            <div style="background:#FFFDF9;border:1px solid rgba(47,57,66,.06);border-radius:18px;padding:16px 18px;display:flex;align-items:center;justify-content:space-between;box-shadow:0 5px 14px -10px rgba(47,57,66,.3);"><div><div style="font-family:Fredoka;font-weight:600;font-size:16px;">Sound</div><div style="font-size:12px;color:#7E878E;">Soft pops &amp; chimes</div></div><div style="width:48px;height:28px;border-radius:100px;background:#8FD8B5;position:relative;"><div style="position:absolute;top:3px;right:3px;width:22px;height:22px;border-radius:50%;background:#fff;box-shadow:0 2px 4px rgba(47,57,66,.25);"></div></div></div>
+            <div style="background:#FFFDF9;border:1px solid rgba(47,57,66,.06);border-radius:18px;padding:16px 18px;display:flex;align-items:center;justify-content:space-between;box-shadow:0 5px 14px -10px rgba(47,57,66,.3);"><div><div style="font-family:Fredoka;font-weight:600;font-size:16px;">Haptics</div><div style="font-size:12px;color:#7E878E;">Light taps on pop</div></div><div style="width:48px;height:28px;border-radius:100px;background:#8FD8B5;position:relative;"><div style="position:absolute;top:3px;right:3px;width:22px;height:22px;border-radius:50%;background:#fff;box-shadow:0 2px 4px rgba(47,57,66,.25);"></div></div></div>
+            <div style="background:#FFFDF9;border:1px solid rgba(47,57,66,.06);border-radius:18px;padding:16px 18px;display:flex;align-items:center;justify-content:space-between;box-shadow:0 5px 14px -10px rgba(47,57,66,.3);"><div><div style="font-family:Fredoka;font-weight:600;font-size:16px;">Color Assist</div><div style="font-size:12px;color:#7E878E;">Rings + shapes for states</div></div><div style="width:48px;height:28px;border-radius:100px;background:rgba(47,57,66,.14);position:relative;"><div style="position:absolute;top:3px;left:3px;width:22px;height:22px;border-radius:50%;background:#fff;box-shadow:0 2px 4px rgba(47,57,66,.25);"></div></div></div>
+            <div style="background:#FFFDF9;border:1px solid rgba(47,57,66,.06);border-radius:18px;padding:16px 18px;display:flex;align-items:center;justify-content:space-between;box-shadow:0 5px 14px -10px rgba(47,57,66,.3);"><div><div style="font-family:Fredoka;font-weight:600;font-size:16px;">Reduce Motion</div><div style="font-size:12px;color:#7E878E;">Calmer transitions</div></div><div style="width:48px;height:28px;border-radius:100px;background:rgba(47,57,66,.14);position:relative;"><div style="position:absolute;top:3px;left:3px;width:22px;height:22px;border-radius:50%;background:#fff;box-shadow:0 2px 4px rgba(47,57,66,.25);"></div></div></div>
+          </div>
+          <div style="flex:1;"></div>
+          <div style="text-align:center;font-size:12px;color:#7E878E;">PopPath! v0 · 초기 기능 최소화</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- ============ COMPONENTS & STATES ============ -->
+<div style="margin-top:80px;margin-bottom:30px;">
+  <div style="font-family:Fredoka;font-weight:600;font-size:13px;letter-spacing:.14em;text-transform:uppercase;color:#8FB9A8;">03 — Components &amp; Block States</div>
+  <div style="font-family:Fredoka;font-weight:600;font-size:30px;color:#2F3942;margin-top:6px;">블록 상태 · 버튼 · HUD</div>
+  <div style="font-size:14px;color:#7E878E;margin-top:8px;">상태는 색 하나가 아니라 <b style="color:#4A5A66;">색 + 형태 + 모션</b>으로 함께 구분합니다.</div>
+</div>
+
+<div style="display:grid;grid-template-columns:1.4fr 1fr;gap:24px;">
+  <!-- Block states -->
+  <div style="background:#FFFDF9;border:1px solid rgba(47,57,66,.05);border-radius:28px;padding:32px;box-shadow:0 2px 4px rgba(47,57,66,.04),0 22px 44px -30px rgba(47,57,66,.3);">
+    <div style="font-family:Fredoka;font-weight:600;font-size:19px;margin-bottom:24px;">Block States</div>
+    <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:18px;">
+      <div style="display:flex;flex-direction:column;align-items:center;gap:12px;text-align:center;">
+        <div style="width:58px;height:58px;border-radius:16px;background:#AFC8DA;display:flex;align-items:center;justify-content:center;font-size:22px;color:#2F3942;box-shadow:0 5px 11px rgba(47,57,66,.14),inset 0 1px 0 rgba(255,255,255,.45);">▲</div>
+        <div><div style="font-family:Fredoka;font-weight:600;font-size:13px;">기본</div><div style="font-size:11px;color:#7E878E;margin-top:2px;line-height:1.3;">차분한 색 + 얕은 그림자</div></div>
+      </div>
+      <div style="display:flex;flex-direction:column;align-items:center;gap:12px;text-align:center;">
+        <div style="width:58px;height:58px;border-radius:16px;background:#BFD6E4;display:flex;align-items:center;justify-content:center;font-size:22px;color:#2F3942;box-shadow:0 6px 13px rgba(47,57,66,.16),inset 0 1px 0 rgba(255,255,255,.6);">▶</div>
+        <div><div style="font-family:Fredoka;font-weight:600;font-size:13px;">탈출 가능</div><div style="font-size:11px;color:#7E878E;margin-top:2px;line-height:1.3;">미세한 밝기 상승</div></div>
+      </div>
+      <div style="display:flex;flex-direction:column;align-items:center;gap:12px;text-align:center;">
+        <div style="width:58px;height:58px;border-radius:16px;background:#8FD8B5;display:flex;align-items:center;justify-content:center;font-size:22px;color:#23413A;box-shadow:0 0 0 3px rgba(143,216,181,.95),0 5px 12px rgba(76,110,96,.22);animation:ppPulse 1.1s ease-in-out infinite;">▶</div>
+        <div><div style="font-family:Fredoka;font-weight:600;font-size:13px;">Open Chain</div><div style="font-size:11px;color:#7E878E;margin-top:2px;line-height:1.3;">민트 링 + 펄스</div></div>
+      </div>
+      <div style="display:flex;flex-direction:column;align-items:center;gap:12px;text-align:center;">
+        <div style="width:58px;height:58px;border-radius:16px;background:#F3A38A;display:flex;align-items:center;justify-content:center;font-size:22px;color:#5A2E22;box-shadow:0 0 0 3px rgba(243,163,138,.9),0 5px 12px rgba(160,90,70,.22);">★</div>
+        <div><div style="font-family:Fredoka;font-weight:600;font-size:13px;">Perfect</div><div style="font-size:11px;color:#7E878E;margin-top:2px;line-height:1.3;">코랄 포인트 · 짧은 확대</div></div>
+      </div>
+      <div style="display:flex;flex-direction:column;align-items:center;gap:12px;text-align:center;">
+        <div style="width:58px;height:58px;border-radius:16px;background:#AFC8DA;display:flex;align-items:center;justify-content:center;font-size:22px;color:#2F3942;box-shadow:0 0 0 2px rgba(243,163,138,.7),0 5px 11px rgba(47,57,66,.14);animation:ppShake .9s ease-in-out infinite;">▲</div>
+        <div><div style="font-family:Fredoka;font-weight:600;font-size:13px;">Miss</div><div style="font-size:11px;color:#7E878E;margin-top:2px;line-height:1.3;">빨강 대신 짧은 흔들림</div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Buttons + HUD -->
+  <div style="background:#FFFDF9;border:1px solid rgba(47,57,66,.05);border-radius:28px;padding:32px;box-shadow:0 2px 4px rgba(47,57,66,.04),0 22px 44px -30px rgba(47,57,66,.3);display:flex;flex-direction:column;gap:18px;">
+    <div style="font-family:Fredoka;font-weight:600;font-size:19px;">Buttons &amp; HUD</div>
+    <div style="height:54px;border-radius:18px;background:#8FD8B5;display:flex;align-items:center;justify-content:center;font-family:Fredoka;font-weight:600;font-size:18px;color:#23413A;box-shadow:0 9px 18px -8px rgba(76,110,96,.5),inset 0 1px 0 rgba(255,255,255,.4);">Primary · Play / Retry</div>
+    <div style="height:50px;border-radius:16px;background:#FFFDF9;border:1.5px solid rgba(47,57,66,.12);display:flex;align-items:center;justify-content:center;font-family:Fredoka;font-weight:600;font-size:16px;color:#4A5A66;">Secondary · Ghost</div>
+    <div style="display:flex;gap:8px;">
+      <div style="flex:1;background:#DDEBE4;border-radius:14px;padding:10px 4px;text-align:center;"><div style="font-size:9px;font-weight:800;letter-spacing:.1em;color:#7E878E;">SCORE</div><div style="font-family:Fredoka;font-weight:700;font-size:19px;color:#2F3942;">820</div></div>
+      <div style="flex:1;background:#DDEBE4;border-radius:14px;padding:10px 4px;text-align:center;"><div style="font-size:9px;font-weight:800;letter-spacing:.1em;color:#7E878E;">TIME</div><div style="font-family:Fredoka;font-weight:700;font-size:19px;color:#2F3942;">0:48</div></div>
+      <div style="flex:1;background:#DDEBE4;border-radius:14px;padding:10px 4px;text-align:center;"><div style="font-size:9px;font-weight:800;letter-spacing:.1em;color:#3F7A5E;">CHAIN</div><div style="font-family:Fredoka;font-weight:700;font-size:19px;color:#3F7A5E;">×5</div></div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ DO / DON'T ============ -->
+<div style="margin-top:80px;margin-bottom:30px;">
+  <div style="font-family:Fredoka;font-weight:600;font-size:13px;letter-spacing:.14em;text-transform:uppercase;color:#8FB9A8;">04 — Principles</div>
+  <div style="font-family:Fredoka;font-weight:600;font-size:30px;color:#2F3942;margin-top:6px;">Do / Don't</div>
+</div>
+
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:24px;">
+  <div style="background:#EEF6F2;border:1px solid rgba(143,216,181,.4);border-radius:28px;padding:32px;">
+    <div style="display:flex;align-items:center;gap:10px;font-family:Fredoka;font-weight:700;font-size:20px;color:#3F7A5E;margin-bottom:20px;"><span style="width:28px;height:28px;border-radius:50%;background:#8FD8B5;display:flex;align-items:center;justify-content:center;color:#23413A;font-size:15px;">✓</span>Do</div>
+    <div style="display:flex;flex-direction:column;gap:14px;font-size:15px;color:#395049;line-height:1.5;">
+      <div style="display:flex;gap:10px;"><span style="color:#8FD8B5;">●</span>보드와 블록을 크게, 읽기 쉽게.</div>
+      <div style="display:flex;gap:10px;"><span style="color:#8FD8B5;">●</span>Open Chain 후보는 민트 링 + 작은 펄스로.</div>
+      <div style="display:flex;gap:10px;"><span style="color:#8FD8B5;">●</span>Retry 버튼을 결과 화면의 주인공으로.</div>
+      <div style="display:flex;gap:10px;"><span style="color:#8FD8B5;">●</span>부드러운 그림자와 저채도로 편안함을.</div>
+      <div style="display:flex;gap:10px;"><span style="color:#8FD8B5;">●</span>상태는 색 + 형태 + 모션으로 함께 구분.</div>
+    </div>
+  </div>
+  <div style="background:#FBF1ED;border:1px solid rgba(243,163,138,.4);border-radius:28px;padding:32px;">
+    <div style="display:flex;align-items:center;gap:10px;font-family:Fredoka;font-weight:700;font-size:20px;color:#A8674F;margin-bottom:20px;"><span style="width:28px;height:28px;border-radius:50%;background:#F3A38A;display:flex;align-items:center;justify-content:center;color:#5A2E22;font-size:15px;">✕</span>Don't</div>
+    <div style="display:flex;flex-direction:column;gap:14px;font-size:15px;color:#6E4234;line-height:1.5;">
+      <div style="display:flex;gap:10px;"><span style="color:#F3A38A;">●</span>메뉴·배너·상점 버튼으로 화면을 채우기.</div>
+      <div style="display:flex;gap:10px;"><span style="color:#F3A38A;">●</span>빨강·네온으로 모든 상태를 강조하기.</div>
+      <div style="display:flex;gap:10px;"><span style="color:#F3A38A;">●</span>결과 화면을 광고·공유·업적으로 어지럽히기.</div>
+      <div style="display:flex;gap:10px;"><span style="color:#F3A38A;">●</span>강한 대비·검정 배경·번쩍이는 플래시.</div>
+      <div style="display:flex;gap:10px;"><span style="color:#F3A38A;">●</span>색 하나만으로 게임 정보를 전달하기.</div>
+    </div>
+  </div>
+</div>
+
+<!-- footer -->
+<div style="margin-top:60px;text-align:center;font-family:Fredoka;font-weight:500;font-size:18px;color:#7E878E;line-height:1.5;">PopPath!는 빠른 게임이지만, 화면은 편안해야 한다.<br><span style="color:#4A5A66;">자극이 아니라 흐름으로 한 판 더.</span></div>
+
+<div style="margin-top:40px;text-align:center;font-family:Fredoka;font-weight:500;font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:rgba(126,135,142,.5);">HG creation</div>
+
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;blockStyle&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;Jelly&quot;,&quot;Flat&quot;],&quot;default&quot;:&quot;Jelly&quot;,&quot;tsType&quot;:&quot;string&quot;},&quot;reduceMotion&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;}}">
+class Component extends DCLogic {
+  constructor(props){
+    super(props);
+    this.state = { board:this.makeBoard(), score:0, chain:0, maxChain:0, time:90, best:1240, running:true };
+    this._chainTimer = null;
+    this._tick = null;
+  }
+  makeBoard(){
+    const dirs = ['up','down','left','right'];
+    const colors = ['#AFC8DA','#C9C2E8'];
+    const b = []; let id = 1;
+    for(let r=0;r<7;r++){
+      const row = [];
+      for(let c=0;c<6;c++){
+        if(Math.random() < 0.24){ row.push(null); }
+        else { row.push({ id:id++, dir:dirs[(Math.random()*4)|0], color:colors[(r+c)%2] }); }
+      }
+      b.push(row);
+    }
+    return b;
+  }
+  componentDidMount(){
+    this._tick = setInterval(()=>{
+      this.setState(s => (s.running && s.time>0) ? { time:s.time-1, running:(s.time-1)>0 } : {});
+    }, 1000);
+  }
+  componentWillUnmount(){ clearInterval(this._tick); clearTimeout(this._chainTimer); }
+  escapable(board,r,c){
+    const cell = board[r][c];
+    if(!cell) return false;
+    const step = {up:[-1,0],down:[1,0],left:[0,-1],right:[0,1]}[cell.dir];
+    let rr = r+step[0], cc = c+step[1];
+    while(rr>=0 && rr<7 && cc>=0 && cc<6){
+      if(board[rr][cc]) return false;
+      rr += step[0]; cc += step[1];
+    }
+    return true;
+  }
+  tap(r,c){
+    const s = this.state;
+    if(!s.running) return;
+    const board = s.board.map(row => row.slice());
+    const cell = board[r][c];
+    if(!cell) return;
+    if(!this.escapable(board,r,c)){
+      board[r][c] = {...cell, miss:Date.now()};
+      this.setState({ board });
+      setTimeout(()=>{
+        const b2 = this.state.board.map(x=>x.slice());
+        if(b2[r][c]) b2[r][c] = {...b2[r][c], miss:0};
+        this.setState({ board:b2 });
+      }, 220);
+      return;
+    }
+    board[r][c] = {...cell, leaving:true};
+    this.setState({ board });
+    const nc = s.chain + 1;
+    const gain = 10 * nc;
+    setTimeout(()=>{
+      const b2 = this.state.board.map(x=>x.slice());
+      b2[r][c] = null;
+      this.setState(st => ({ board:b2, score:st.score+gain, chain:nc, maxChain:Math.max(st.maxChain,nc) }));
+    }, 220);
+    clearTimeout(this._chainTimer);
+    this._chainTimer = setTimeout(()=> this.setState({ chain:0 }), 1500);
+  }
+  renderVals(){
+    const s = this.state;
+    const jelly = (this.props.blockStyle ?? 'Jelly') === 'Jelly';
+    const reduce = this.props.reduceMotion ?? false;
+    const arrowMap = { up:'▲', down:'▼', left:'◀', right:'▶' };
+    const leaveT = { up:'translateY(-130px)', down:'translateY(130px)', left:'translateX(-130px)', right:'translateX(130px)' };
+    const cells = [];
+    for(let r=0;r<7;r++){
+      for(let c=0;c<6;c++){
+        const cell = s.board[r][c];
+        const key = r+'-'+c;
+        if(!cell){
+          cells.push({ key, arrow:'', bg:'rgba(47,57,66,0.035)', fg:'transparent', shadow:'inset 0 0 0 2px rgba(47,57,66,0.04)', transform:'none', opacity:'1', anim:'none', onTap:()=>{} });
+          continue;
+        }
+        const open = this.escapable(s.board, r, c);
+        let transform = 'none', opacity = '1';
+        if(cell.leaving){ transform = leaveT[cell.dir] + ' scale(.5)'; opacity = '0'; }
+        let shadow;
+        if(open){
+          shadow = '0 0 0 3px rgba(143,216,181,.95), 0 5px 12px rgba(76,110,96,.22)';
+        } else if(jelly){
+          shadow = '0 4px 9px rgba(47,57,66,.13), inset 0 1px 0 rgba(255,255,255,.5)';
+        } else {
+          shadow = '0 1px 0 rgba(47,57,66,.12)';
+        }
+        if(cell.miss){ shadow = '0 0 0 2px rgba(243,163,138,.75), 0 4px 9px rgba(47,57,66,.13)'; }
+        let anim = 'none';
+        if(cell.miss){ anim = 'ppShake .18s ease'; }
+        else if(open && !reduce){ anim = 'ppPulse 1.1s ease-in-out infinite'; }
+        cells.push({ key, arrow:arrowMap[cell.dir], bg:cell.color, fg:'#2F3942', shadow, transform, opacity, anim, onTap:()=>this.tap(r,c) });
+      }
+    }
+    const mm = Math.floor(s.time/60);
+    const ss = String(s.time%60).padStart(2,'0');
+    return {
+      cells,
+      scoreStr: s.score.toLocaleString(),
+      timeStr: mm + ':' + ss,
+      chain: s.chain,
+      maxChain: s.maxChain,
+      best: s.best.toLocaleString(),
+      running: s.running,
+      tapReset: ()=> this.setState({ board:this.makeBoard(), score:0, chain:0, maxChain:0, time:90, running:true })
+    };
+  }
+}
+</script>
+</body>
+</html>

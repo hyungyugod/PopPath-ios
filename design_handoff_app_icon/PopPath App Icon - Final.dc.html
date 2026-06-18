@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;500;600;700&family=Nunito:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;}
+body{margin:0;}
+@keyframes ppfFloat{0%,100%{transform:translateY(0);}50%{transform:translateY(-7px);}}
+</style>
+</helmet>
+<div style="min-height:100vh;background:radial-gradient(120% 80% at 50% -10%, #F1EDE5 0%, #E7E2DA 60%, #E2DCD3 100%);font-family:Nunito,sans-serif;color:#2F3942;padding:64px 48px 90px;-webkit-font-smoothing:antialiased;">
+  <div style="max-width:1000px;margin:0 auto;">
+
+    <!-- HEADER -->
+    <div style="text-align:center;margin-bottom:6px;">
+      <div style="display:inline-flex;align-items:center;gap:8px;background:rgba(143,216,181,.22);color:#3F7A5E;font-family:Fredoka;font-weight:600;font-size:13px;letter-spacing:.08em;text-transform:uppercase;padding:7px 14px;border-radius:100px;margin-bottom:22px;">App Icon · 최종</div>
+      <h1 style="font-family:Fredoka;font-weight:700;font-size:48px;line-height:1;margin:0;letter-spacing:-.02em;color:#2F3942;">PopPath<span style="color:#F3A38A;">!</span> 앱 아이콘</h1>
+      <p style="font-family:Fredoka;font-weight:500;font-size:18px;color:#4A5A66;margin:16px 0 0;line-height:1.5;">이어지는 블록의 길, 선두는 코랄로 열린다.</p>
+    </div>
+
+    <!-- HERO -->
+    <div style="margin-top:54px;background:linear-gradient(160deg,#FBF8F2 0%,#F4EEE3 100%);border:1px solid rgba(47,57,66,.05);border-radius:36px;padding:64px 40px;box-shadow:0 2px 4px rgba(47,57,66,.04),0 30px 60px -34px rgba(47,57,66,.35);position:relative;overflow:hidden;">
+      <div style="position:absolute;left:-40px;top:-40px;width:300px;height:300px;border-radius:50%;background:radial-gradient(circle,rgba(143,216,181,.22),rgba(143,216,181,0) 70%);"></div>
+      <div style="position:absolute;right:-30px;bottom:-60px;width:240px;height:240px;border-radius:50%;background:radial-gradient(circle,rgba(243,163,138,.18),rgba(243,163,138,0) 70%);"></div>
+      <div style="position:relative;display:flex;justify-content:center;">
+        <div style="width:300px;height:300px;border-radius:67px;background:linear-gradient(155deg,#83D4B2 0%,#5FBD97 100%);overflow:hidden;position:relative;box-shadow:0 30px 60px -22px rgba(54,108,84,.6),inset 0 2px 0 rgba(255,255,255,.45);animation:ppfFloat 6s ease-in-out infinite;">
+          <div style="position:absolute;left:0;top:0;width:240px;height:240px;transform:scale(1.25);transform-origin:top left;">
+            <div style="position:absolute;left:36px;bottom:36px;width:76px;height:76px;border-radius:22px;background:#FBF8F2;box-shadow:0 10px 20px -8px rgba(40,80,64,.4),inset 0 2px 0 rgba(255,255,255,.7);"></div>
+            <div style="position:absolute;left:80px;bottom:80px;width:76px;height:76px;border-radius:22px;background:#FBF8F2;box-shadow:0 10px 20px -8px rgba(40,80,64,.4),inset 0 2px 0 rgba(255,255,255,.7);"></div>
+            <div style="position:absolute;left:124px;bottom:124px;width:76px;height:76px;border-radius:22px;background:#F3A38A;box-shadow:0 14px 24px -8px rgba(150,70,55,.45),inset 0 2px 0 rgba(255,255,255,.45);"></div>
+          </div>
+        </div>
+      </div>
+      <div style="position:relative;text-align:center;margin-top:28px;font-family:Fredoka;font-weight:500;font-size:14px;color:#7E878E;letter-spacing:.04em;">1024 × 1024 · App Store</div>
+    </div>
+
+    <!-- SIZE SCALE -->
+    <div style="margin-top:24px;background:#FFFDF9;border:1px solid rgba(47,57,66,.05);border-radius:28px;padding:34px 36px;box-shadow:0 2px 4px rgba(47,57,66,.04),0 22px 44px -30px rgba(47,57,66,.3);">
+      <div style="font-family:Fredoka;font-weight:600;font-size:19px;margin-bottom:4px;">사이즈 스케일</div>
+      <div style="font-size:13px;color:#7E878E;margin-bottom:30px;line-height:1.5;">실제 iOS 표시 크기로 렌더링 — 작은 화면에서도 코랄 선두 블록이 또렷하게 읽힙니다.</div>
+      <div style="display:flex;align-items:flex-end;justify-content:center;gap:34px;flex-wrap:wrap;">
+
+        <div style="display:flex;flex-direction:column;align-items:center;gap:12px;">
+          <div style="width:120px;height:120px;border-radius:27px;background:linear-gradient(155deg,#83D4B2,#5FBD97);overflow:hidden;position:relative;box-shadow:0 10px 22px -10px rgba(54,108,84,.5);"><div style="position:absolute;left:0;top:0;width:240px;height:240px;transform:scale(.5);transform-origin:top left;"><div style="position:absolute;left:36px;bottom:36px;width:76px;height:76px;border-radius:22px;background:#FBF8F2;box-shadow:0 10px 20px -8px rgba(40,80,64,.4),inset 0 2px 0 rgba(255,255,255,.7);"></div><div style="position:absolute;left:80px;bottom:80px;width:76px;height:76px;border-radius:22px;background:#FBF8F2;box-shadow:0 10px 20px -8px rgba(40,80,64,.4),inset 0 2px 0 rgba(255,255,255,.7);"></div><div style="position:absolute;left:124px;bottom:124px;width:76px;height:76px;border-radius:22px;background:#F3A38A;box-shadow:0 14px 24px -8px rgba(150,70,55,.45),inset 0 2px 0 rgba(255,255,255,.45);"></div></div></div>
+          <div style="text-align:center;"><div style="font-family:Fredoka;font-weight:600;font-size:13px;color:#2F3942;">120 px</div><div style="font-size:11px;color:#7E878E;">App @2x</div></div>
+        </div>
+
+        <div style="display:flex;flex-direction:column;align-items:center;gap:12px;">
+          <div style="width:87px;height:87px;border-radius:19px;background:linear-gradient(155deg,#83D4B2,#5FBD97);overflow:hidden;position:relative;box-shadow:0 8px 18px -9px rgba(54,108,84,.5);"><div style="position:absolute;left:0;top:0;width:240px;height:240px;transform:scale(.3625);transform-origin:top left;"><div style="position:absolute;left:36px;bottom:36px;width:76px;height:76px;border-radius:22px;background:#FBF8F2;box-shadow:inset 0 2px 0 rgba(255,255,255,.7);"></div><div style="position:absolute;left:80px;bottom:80px;width:76px;height:76px;border-radius:22px;background:#FBF8F2;box-shadow:inset 0 2px 0 rgba(255,255,255,.7);"></div><div style="position:absolute;left:124px;bottom:124px;width:76px;height:76px;border-radius:22px;background:#F3A38A;box-shadow:inset 0 2px 0 rgba(255,255,255,.45);"></div></div></div>
+          <div style="text-align:center;"><div style="font-family:Fredoka;font-weight:600;font-size:13px;color:#2F3942;">87 px</div><div style="font-size:11px;color:#7E878E;">Settings</div></div>
+        </div>
+
+        <div style="display:flex;flex-direction:column;align-items:center;gap:12px;">
+          <div style="width:60px;height:60px;border-radius:13px;background:linear-gradient(155deg,#83D4B2,#5FBD97);overflow:hidden;position:relative;box-shadow:0 6px 14px -7px rgba(54,108,84,.5);"><div style="position:absolute;left:0;top:0;width:240px;height:240px;transform:scale(.25);transform-origin:top left;"><div style="position:absolute;left:36px;bottom:36px;width:76px;height:76px;border-radius:22px;background:#FBF8F2;"></div><div style="position:absolute;left:80px;bottom:80px;width:76px;height:76px;border-radius:22px;background:#FBF8F2;"></div><div style="position:absolute;left:124px;bottom:124px;width:76px;height:76px;border-radius:22px;background:#F3A38A;"></div></div></div>
+          <div style="text-align:center;"><div style="font-family:Fredoka;font-weight:600;font-size:13px;color:#2F3942;">60 px</div><div style="font-size:11px;color:#7E878E;">Notification</div></div>
+        </div>
+
+        <div style="display:flex;flex-direction:column;align-items:center;gap:12px;">
+          <div style="width:40px;height:40px;border-radius:9px;background:linear-gradient(155deg,#83D4B2,#5FBD97);overflow:hidden;position:relative;box-shadow:0 4px 10px -5px rgba(54,108,84,.5);"><div style="position:absolute;left:0;top:0;width:240px;height:240px;transform:scale(.1667);transform-origin:top left;"><div style="position:absolute;left:36px;bottom:36px;width:76px;height:76px;border-radius:22px;background:#FBF8F2;"></div><div style="position:absolute;left:80px;bottom:80px;width:76px;height:76px;border-radius:22px;background:#FBF8F2;"></div><div style="position:absolute;left:124px;bottom:124px;width:76px;height:76px;border-radius:22px;background:#F3A38A;"></div></div></div>
+          <div style="text-align:center;"><div style="font-family:Fredoka;font-weight:600;font-size:13px;color:#2F3942;">40 px</div><div style="font-size:11px;color:#7E878E;">Spotlight</div></div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- HOME SCREEN + SPEC -->
+    <div style="margin-top:24px;display:grid;grid-template-columns:1fr 1fr;gap:24px;">
+
+      <div style="background:#FFFDF9;border:1px solid rgba(47,57,66,.05);border-radius:28px;padding:34px 36px;box-shadow:0 2px 4px rgba(47,57,66,.04),0 22px 44px -30px rgba(47,57,66,.3);">
+        <div style="font-family:Fredoka;font-weight:600;font-size:19px;margin-bottom:4px;">홈 화면에서</div>
+        <div style="font-size:13px;color:#7E878E;margin-bottom:28px;line-height:1.5;">민트 타일 + 코랄 선두가 주변 앱 사이에서 분명하게 눈에 띕니다.</div>
+        <div style="display:flex;justify-content:center;gap:26px;">
+          <div style="display:flex;flex-direction:column;align-items:center;gap:9px;"><div style="width:60px;height:60px;border-radius:13px;background:#D8E2EC;box-shadow:0 6px 14px -7px rgba(47,57,66,.3);"></div><span style="font-family:Fredoka;font-weight:500;font-size:11px;color:#9AA2A8;">Notes</span></div>
+          <div style="display:flex;flex-direction:column;align-items:center;gap:9px;">
+            <div style="width:60px;height:60px;border-radius:13px;background:linear-gradient(155deg,#83D4B2,#5FBD97);overflow:hidden;position:relative;box-shadow:0 7px 16px -6px rgba(54,108,84,.5);"><div style="position:absolute;left:0;top:0;width:240px;height:240px;transform:scale(.25);transform-origin:top left;"><div style="position:absolute;left:36px;bottom:36px;width:76px;height:76px;border-radius:22px;background:#FBF8F2;box-shadow:inset 0 2px 0 rgba(255,255,255,.7);"></div><div style="position:absolute;left:80px;bottom:80px;width:76px;height:76px;border-radius:22px;background:#FBF8F2;box-shadow:inset 0 2px 0 rgba(255,255,255,.7);"></div><div style="position:absolute;left:124px;bottom:124px;width:76px;height:76px;border-radius:22px;background:#F3A38A;box-shadow:inset 0 2px 0 rgba(255,255,255,.45);"></div></div></div>
+            <span style="font-family:Fredoka;font-weight:600;font-size:11px;color:#4A5A66;">PopPath!</span>
+          </div>
+          <div style="display:flex;flex-direction:column;align-items:center;gap:9px;"><div style="width:60px;height:60px;border-radius:13px;background:#E7D9CF;box-shadow:0 6px 14px -7px rgba(47,57,66,.3);"></div><span style="font-family:Fredoka;font-weight:500;font-size:11px;color:#9AA2A8;">Music</span></div>
+        </div>
+      </div>
+
+      <div style="background:#FFFDF9;border:1px solid rgba(47,57,66,.05);border-radius:28px;padding:34px 36px;box-shadow:0 2px 4px rgba(47,57,66,.04),0 22px 44px -30px rgba(47,57,66,.3);">
+        <div style="font-family:Fredoka;font-weight:600;font-size:19px;margin-bottom:18px;">사양</div>
+        <div style="display:flex;flex-direction:column;gap:12px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid rgba(47,57,66,.07);padding-bottom:11px;"><span style="font-size:14px;color:#4A5A66;">콘셉트</span><span style="font-family:Fredoka;font-weight:600;font-size:14px;color:#2F3942;">이어지는 블록의 길</span></div>
+          <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid rgba(47,57,66,.07);padding-bottom:11px;"><span style="font-size:14px;color:#4A5A66;">타일 모서리</span><span style="font-family:Fredoka;font-weight:600;font-size:14px;color:#2F3942;font-variant-numeric:tabular-nums;">22.4% (iOS)</span></div>
+          <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid rgba(47,57,66,.07);padding-bottom:11px;"><span style="font-size:14px;color:#4A5A66;">블록</span><span style="font-family:Fredoka;font-weight:600;font-size:14px;color:#2F3942;">크림 ×2 + 코랄 선두</span></div>
+          <div style="display:flex;justify-content:space-between;align-items:center;"><span style="font-size:14px;color:#4A5A66;">방향감</span><span style="font-family:Fredoka;font-weight:600;font-size:14px;color:#2F3942;">대각선 상승 배치</span></div>
+        </div>
+        <div style="height:1px;background:rgba(47,57,66,.07);margin:20px 0 16px;"></div>
+        <div style="display:flex;gap:10px;">
+          <div style="flex:1;text-align:center;"><div style="height:34px;border-radius:10px;background:linear-gradient(155deg,#83D4B2,#5FBD97);margin-bottom:6px;"></div><div style="font-size:10px;color:#7E878E;">배경</div></div>
+          <div style="flex:1;text-align:center;"><div style="height:34px;border-radius:10px;background:#FBF8F2;border:1px solid rgba(47,57,66,.08);margin-bottom:6px;"></div><div style="font-size:10px;color:#7E878E;font-variant-numeric:tabular-nums;">#FBF8F2</div></div>
+          <div style="flex:1;text-align:center;"><div style="height:34px;border-radius:10px;background:#F3A38A;margin-bottom:6px;"></div><div style="font-size:10px;color:#7E878E;font-variant-numeric:tabular-nums;">#F3A38A</div></div>
+        </div>
+      </div>
+
+    </div>
+
+    <div style="margin-top:48px;text-align:center;font-family:Fredoka;font-weight:500;font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:rgba(126,135,142,.5);">HG creation</div>
+
+  </div>
+</div>
+</x-dc>
+</body>
+</html>
