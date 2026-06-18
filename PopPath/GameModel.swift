@@ -180,9 +180,24 @@ struct RoundSummary: Identifiable, Equatable {
     }
 
     var shareText: String {
+        shareText(language: .english)
+    }
+
+    func shareText(language: AppLanguage) -> String {
         let modeLabel = mode == .daily ? "Daily \(dailyId ?? "")" : "Classic"
         let bestLabel = mode == .daily ? "Daily Best" : "Best"
         let bestValue = mode == .daily ? (dailyBest ?? score) : best
+
+        if language == .korean {
+            let koreanModeLabel = mode == .daily ? "오늘의 길 \(dailyId ?? "")" : "클래식"
+            let koreanBestLabel = mode == .daily ? "오늘 최고" : "최고"
+
+            return """
+            PopPath \(koreanModeLabel)
+            점수 \(score.formatted()) | \(koreanBestLabel) \(bestValue.formatted())
+            체인 x\(maxChain) | 길 열림 \(metrics.unlocks) | 싹쓸이 \(metrics.boardClears) | 정확도 \(metrics.accuracyPercent)%
+            """
+        }
 
         return """
         PopPath \(modeLabel)
@@ -220,6 +235,7 @@ final class GameModel: ObservableObject {
     @Published private(set) var dailyChallenge: DailyChallenge
     @Published private(set) var boardToast: BoardToast?
     @Published private(set) var stats: PlayerStats
+    @Published private(set) var escapingBlocks: [EscapingBlock] = []
     @Published var roundSummary: RoundSummary?
 
     nonisolated static let bestScoreStorageKey = "bestScore"
@@ -302,6 +318,7 @@ final class GameModel: ObservableObject {
         chain = 0
         maxChain = 0
         roundMetrics = .zero
+        escapingBlocks = []
         board = makeBoard(for: mode)
         time = GameRules.roundSeconds
         running = true
@@ -323,12 +340,15 @@ final class GameModel: ObservableObject {
         toastTask?.cancel()
         chain = 0
         boardToast = nil
+        escapingBlocks = []
         roundSummary = nil
     }
 
     func configureFeedback(soundEnabled: Bool, hapticsEnabled: Bool) {
         feedbackSoundEnabled = soundEnabled
         feedbackHapticsEnabled = hapticsEnabled
+        Haptics.prepare(enabled: hapticsEnabled)
+        SoundEffects.shared.prepare(enabled: soundEnabled)
     }
 
     func tap(row: Int, column: Int, hapticsEnabled: Bool, soundEnabled: Bool = false) {
@@ -341,8 +361,11 @@ final class GameModel: ObservableObject {
         }
 
         if GameRules.isEscapable(on: board, row: row, column: column) {
-            block.isLeaving = true
-            updateCell(row: row, column: column, with: block)
+            let openBeforeRemoval = GameRules.openPositions(in: board)
+            let blockID = block.id
+            let escapingBlock = EscapingBlock(id: blockID, block: block, row: row, column: column)
+            escapingBlocks.append(escapingBlock)
+            updateCell(row: row, column: column, with: nil)
 
             roundMetrics.pops += 1
             chain += 1
@@ -353,11 +376,13 @@ final class GameModel: ObservableObject {
             SoundEffects.shared.play(feedbackEvent, enabled: soundEnabled)
             showChainToastIfNeeded()
             scheduleChainReset()
+            awardUnlockBonusIfNeeded(openBeforeRemoval: openBeforeRemoval)
+            resolveBoardAfterRemoval()
 
-            let blockID = block.id
             Task { [weak self] in
-                try? await Task.sleep(nanoseconds: 340_000_000)
-                self?.removeBlock(id: blockID, row: row, column: column)
+                let lifetime = UInt64((escapingBlock.duration + 0.035) * 1_000_000_000)
+                try? await Task.sleep(nanoseconds: lifetime)
+                self?.removeEscapingBlock(id: blockID)
             }
         } else {
             chainResetTask?.cancel()
@@ -385,6 +410,7 @@ final class GameModel: ObservableObject {
         chainResetTask?.cancel()
         boardRefreshTask?.cancel()
         toastTask?.cancel()
+        escapingBlocks = []
 
         let completedMetrics = roundMetrics
         let previousStats = stats
@@ -459,6 +485,7 @@ final class GameModel: ObservableObject {
         self.boardDealIndex = 0
         self.roundMetrics = .zero
         self.boardToast = nil
+        self.escapingBlocks = []
         self.roundSummary = nil
     }
     #endif
@@ -507,6 +534,10 @@ final class GameModel: ObservableObject {
         updateCell(row: row, column: column, with: nil)
         awardUnlockBonusIfNeeded(openBeforeRemoval: openBeforeRemoval)
         resolveBoardAfterRemoval()
+    }
+
+    private func removeEscapingBlock(id: UUID) {
+        escapingBlocks.removeAll { $0.id == id }
     }
 
     private func clearMiss(id: UUID, row: Int, column: Int) {
@@ -637,7 +668,7 @@ final class GameModel: ObservableObject {
     private func scheduleBoardRefresh(reason: BoardRefreshReason) {
         boardRefreshTask?.cancel()
         boardRefreshTask = Task { [weak self] in
-            try? await Task.sleep(nanoseconds: reason == .clear ? 560_000_000 : 440_000_000)
+            try? await Task.sleep(nanoseconds: reason == .clear ? 260_000_000 : 220_000_000)
             if Task.isCancelled { return }
             self?.dealNextBoard()
         }
@@ -647,6 +678,7 @@ final class GameModel: ObservableObject {
         guard running else { return }
 
         boardDealIndex += 1
+        escapingBlocks = []
         board = makeBoard(for: mode)
         boardRefreshTask = nil
     }

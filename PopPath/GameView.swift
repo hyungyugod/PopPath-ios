@@ -1,6 +1,8 @@
 import SwiftUI
 
 struct GameView: View {
+    @Environment(\.appLanguage) private var language
+
     @ObservedObject var game: GameModel
     let soundEnabled: Bool
     let hapticsEnabled: Bool
@@ -17,6 +19,7 @@ struct GameView: View {
             BoardView(
                 board: game.board,
                 openPositions: game.openPositions,
+                escapingBlocks: game.escapingBlocks,
                 boardToast: game.boardToast,
                 chain: game.chain,
                 colorAssist: colorAssist,
@@ -60,15 +63,15 @@ struct GameView: View {
                     )
             }
             .buttonStyle(.plain)
-            .accessibilityLabel("Exit game")
+            .accessibilityLabel(language.text("Exit game", "게임 나가기"))
 
             Spacer()
 
             HStack(spacing: 7) {
                 Image(systemName: "timer")
                     .font(.system(size: 12, weight: .bold, design: .rounded))
-                Text("\(GameRules.roundSeconds)s")
-                    .font(.ppDisplay(13, weight: .bold))
+                Text(language.text("\(GameRules.roundSeconds)s", "\(GameRules.roundSeconds)초"))
+                    .font(.ppDisplay(14, weight: .bold, language: language))
                     .monospacedDigit()
             }
             .foregroundStyle(Color.ppMintText)
@@ -89,8 +92,13 @@ struct GameView: View {
             Button {
                 game.newBoard()
             } label: {
-                Label(game.mode == .daily ? "Restart" : "New board", systemImage: "arrow.clockwise")
-                    .font(.ppDisplay(13, weight: .semibold))
+                Label(
+                    game.mode == .daily
+                        ? language.text("Restart", "다시")
+                        : language.text("New board", "새 보드"),
+                    systemImage: "arrow.clockwise"
+                )
+                    .font(.ppDisplay(14, weight: .semibold, language: language))
                     .foregroundStyle(Color.ppInkGray.opacity(0.82))
                     .lineLimit(1)
                     .minimumScaleFactor(0.82)
@@ -118,22 +126,22 @@ struct GameView: View {
                 Image(systemName: "calendar")
                     .font(.system(size: 13, weight: .bold, design: .rounded))
                     .foregroundStyle(Color.ppMintText)
-                Text("DAILY ")
-                    .font(.ppBody(12, weight: .heavy))
+                Text(language.text("DAILY ", "데일리 "))
+                    .font(.ppBody(12, weight: .heavy, language: language))
                     .foregroundStyle(Color.ppMintText)
                 Text(game.dailyChallenge.displayLabel)
-                    .font(.ppDisplay(13, weight: .bold))
+                    .font(.ppDisplay(13, weight: .bold, language: language))
                     .foregroundStyle(Color.ppInkGray)
             }
             .lineLimit(1)
             .minimumScaleFactor(0.78)
         } else {
             HStack(spacing: 0) {
-                Text("BEST ")
-                    .font(.ppBody(12, weight: .heavy))
+                Text(language.text("BEST ", "최고 "))
+                    .font(.ppBody(12, weight: .heavy, language: language))
                     .foregroundStyle(Color.ppWarmGray)
                 Text(game.best.formatted())
-                    .font(.ppDisplay(13, weight: .bold))
+                    .font(.ppDisplay(13, weight: .bold, language: language))
                     .foregroundStyle(Color.ppInkGray)
             }
             .lineLimit(1)
@@ -143,15 +151,17 @@ struct GameView: View {
 }
 
 private struct HUDView: View {
+    @Environment(\.appLanguage) private var language
+
     let score: Int
     let time: Int
     let chain: Int
 
     var body: some View {
         HStack(spacing: 8) {
-            HUDTile(label: "SCORE", value: score.formatted())
-            HUDTile(label: "TIME", value: "\(time)")
-            HUDTile(label: "CHAIN", value: "×\(chain)", isChain: true, boost: chainBoost)
+            HUDTile(label: language.text("SCORE", "점수"), value: score.formatted())
+            HUDTile(label: language.text("TIME", "시간"), value: "\(time)")
+            HUDTile(label: language.text("CHAIN", "체인"), value: "×\(chain)", isChain: true, boost: chainBoost)
         }
         .frame(height: 58)
     }
@@ -163,6 +173,8 @@ private struct HUDView: View {
 }
 
 private struct HUDTile: View {
+    @Environment(\.appLanguage) private var language
+
     let label: String
     let value: String
     var isChain = false
@@ -171,11 +183,11 @@ private struct HUDTile: View {
     var body: some View {
         VStack(spacing: 2) {
             Text(label)
-                .font(.ppBody(9, weight: .heavy))
-                .tracking(0.9)
+                .font(.ppBody(10, weight: .heavy, language: language))
+                .tracking(language == .korean ? 0 : 0.9)
                 .foregroundStyle(isChain ? Color.ppMintText : Color.ppWarmGray)
             Text(value)
-                .font(.ppDisplay(21, weight: .bold))
+                .font(.ppDisplay(22, weight: .bold, language: language))
                 .monospacedDigit()
                 .contentTransition(.numericText())
                 .foregroundStyle(chainValueColor)
@@ -216,6 +228,7 @@ private struct HUDTile: View {
 private struct BoardView: View {
     let board: [[PopBlock?]]
     let openPositions: Set<BoardPosition>
+    let escapingBlocks: [EscapingBlock]
     let boardToast: BoardToast?
     let chain: Int
     let colorAssist: Bool
@@ -237,31 +250,54 @@ private struct BoardView: View {
             ) / CGFloat(GameRules.columns)
 
             VStack {
-                LazyVGrid(columns: columns, spacing: gridSpacing) {
-                    ForEach(0..<(GameRules.rows * GameRules.columns), id: \.self) { index in
-                        let row = index / GameRules.columns
-                        let column = index % GameRules.columns
-                        let position = BoardPosition(row: row, column: column)
-                        let escapeOffset = board[row][column]?.direction.escapeOffset(
-                            row: row,
-                            column: column,
+                ZStack(alignment: .topLeading) {
+                    LazyVGrid(columns: columns, spacing: gridSpacing) {
+                        ForEach(0..<(GameRules.rows * GameRules.columns), id: \.self) { index in
+                            let row = index / GameRules.columns
+                            let column = index % GameRules.columns
+                            let position = BoardPosition(row: row, column: column)
+                            let escapeOffset = board[row][column]?.direction.escapeOffset(
+                                row: row,
+                                column: column,
+                                cellSize: cellSize,
+                                spacing: gridSpacing,
+                                padding: boardPadding
+                            ) ?? .zero
+
+                            BoardCell(
+                                block: board[row][column],
+                                isOpen: openPositions.contains(position),
+                                escapeOffset: escapeOffset,
+                                chain: chain,
+                                showOpenHint: colorAssist,
+                                reduceMotion: reduceMotion
+                            )
+                            .contentShape(Rectangle())
+                            .instantTouch {
+                                onTap(row, column)
+                            }
+                        }
+                    }
+
+                    ForEach(escapingBlocks) { escapingBlock in
+                        let escapeOffset = escapingBlock.block.direction.escapeOffset(
+                            row: escapingBlock.row,
+                            column: escapingBlock.column,
                             cellSize: cellSize,
                             spacing: gridSpacing,
                             padding: boardPadding
-                        ) ?? .zero
-
-                        BoardCell(
-                            block: board[row][column],
-                            isOpen: openPositions.contains(position),
+                        )
+                        EscapingBlockView(
+                            escapingBlock: escapingBlock,
                             escapeOffset: escapeOffset,
-                            chain: chain,
-                            showOpenHint: colorAssist,
+                            cellSize: cellSize,
                             reduceMotion: reduceMotion
                         )
-                        .contentShape(Rectangle())
-                        .onTapGesture {
-                            onTap(row, column)
-                        }
+                        .offset(
+                            x: CGFloat(escapingBlock.column) * (cellSize + gridSpacing),
+                            y: CGFloat(escapingBlock.row) * (cellSize + gridSpacing)
+                        )
+                        .allowsHitTesting(false)
                     }
                 }
                 .padding(boardPadding)
@@ -286,7 +322,52 @@ private struct BoardView: View {
     }
 }
 
+private struct EscapingBlockView: View {
+    let escapingBlock: EscapingBlock
+    let escapeOffset: CGSize
+    let cellSize: CGFloat
+    let reduceMotion: Bool
+
+    var body: some View {
+        TimelineView(.animation(minimumInterval: 1.0 / 120.0)) { timeline in
+            let progress = escapeProgress(at: timeline.date)
+            let easedProgress = easeOutCubic(progress)
+
+            ZStack {
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(escapingBlock.block.tone.color)
+                    .shadow(color: Color.ppInkGray.opacity(0.11), radius: 8, x: 0, y: 4)
+
+                Image(systemName: escapingBlock.block.direction.symbolName)
+                    .font(.system(size: 18, weight: .bold, design: .rounded))
+                    .symbolRenderingMode(.monochrome)
+                    .foregroundStyle(Color.ppInkGray)
+            }
+            .frame(width: cellSize, height: cellSize)
+            .offset(reduceMotion ? .zero : escapeOffset.scaled(by: easedProgress))
+            .scaleEffect(1 - easedProgress * 0.12)
+            .opacity(1 - easedProgress * 0.32)
+            .zIndex(20)
+        }
+    }
+
+    private func escapeProgress(at date: Date) -> CGFloat {
+        guard !reduceMotion else { return 1 }
+
+        let elapsed = date.timeIntervalSince(escapingBlock.startedAt)
+        let rawProgress = elapsed / max(escapingBlock.duration, 0.001)
+        return CGFloat(min(max(rawProgress, 0), 1))
+    }
+
+    private func easeOutCubic(_ progress: CGFloat) -> CGFloat {
+        let remaining = 1 - progress
+        return 1 - remaining * remaining * remaining
+    }
+}
+
 private struct BoardCell: View {
+    @Environment(\.appLanguage) private var language
+
     let block: PopBlock?
     let isOpen: Bool
     let escapeOffset: CGSize
@@ -377,23 +458,25 @@ private struct BoardCell: View {
     }
 
     private func accessibilityLabel(for block: PopBlock) -> String {
-        let state = isOpen ? "open path" : "blocked"
-        return "\(block.direction.accessibilityName) arrow, \(state)"
+        let state = isOpen ? language.text("open path", "열린 길") : language.text("blocked", "막힌 길")
+        return "\(block.direction.accessibilityName(language: language)) \(language.text("arrow", "화살표")), \(state)"
     }
 }
 
 private struct BoardToastView: View {
+    @Environment(\.appLanguage) private var language
+
     let toast: BoardToast
 
     var body: some View {
         HStack(spacing: 9) {
             Image(systemName: iconName)
                 .font(.system(size: 13, weight: .black, design: .rounded))
-            Text(toast.title)
-                .font(.ppBody(11, weight: .heavy))
-                .tracking(0.8)
-            Text(toast.detail)
-                .font(.ppDisplay(15, weight: .bold))
+            Text(titleText)
+                .font(.ppBody(12, weight: .heavy, language: language))
+                .tracking(language == .korean ? 0 : 0.8)
+            Text(detailText)
+                .font(.ppDisplay(16, weight: .bold, language: language))
                 .monospacedDigit()
         }
         .foregroundStyle(foregroundColor)
@@ -415,6 +498,36 @@ private struct BoardToastView: View {
         case .freshPath: "shuffle"
         case .clear: "checkmark"
         }
+    }
+
+    private var titleText: String {
+        guard language == .korean else { return toast.title }
+
+        switch toast.title {
+        case "MEGA CHAIN":
+            return "메가 체인"
+        case "BIG CHAIN":
+            return "빅 체인"
+        case "CHAIN":
+            return "체인"
+        case "PATH BURST":
+            return "길이 팡!"
+        case "DOUBLE UNLOCK":
+            return "길 두 개!"
+        case "UNLOCK":
+            return "길 열림"
+        case "FRESH PATH":
+            return "새 길!"
+        case "BOARD CLEAR":
+            return "싹쓸이!"
+        default:
+            return toast.title
+        }
+    }
+
+    private var detailText: String {
+        guard language == .korean else { return toast.detail }
+        return toast.detail == "NO MOVES" ? "갈 곳 없음" : toast.detail
     }
 
     private var foregroundColor: Color {
@@ -493,6 +606,37 @@ private struct ShakeEffect: GeometryEffect {
     }
 }
 
+private struct InstantTouchModifier: ViewModifier {
+    let action: () -> Void
+    @State private var hasFired = false
+
+    func body(content: Content) -> some View {
+        content.highPriorityGesture(
+            DragGesture(minimumDistance: 0)
+                .onChanged { _ in
+                    guard !hasFired else { return }
+                    hasFired = true
+                    action()
+                }
+                .onEnded { _ in
+                    hasFired = false
+                }
+        )
+    }
+}
+
+private extension View {
+    func instantTouch(_ action: @escaping () -> Void) -> some View {
+        modifier(InstantTouchModifier(action: action))
+    }
+}
+
+private extension CGSize {
+    func scaled(by amount: CGFloat) -> CGSize {
+        CGSize(width: width * amount, height: height * amount)
+    }
+}
+
 private extension BlockTone {
     var color: Color {
         switch self {
@@ -525,11 +669,19 @@ private extension Direction {
     }
 
     var accessibilityName: String {
+        accessibilityName(language: .english)
+    }
+
+    func accessibilityName(language: AppLanguage) -> String {
         switch self {
-        case .up: "Up"
-        case .down: "Down"
-        case .left: "Left"
-        case .right: "Right"
+        case .up:
+            return language.text("Up", "위쪽")
+        case .down:
+            return language.text("Down", "아래쪽")
+        case .left:
+            return language.text("Left", "왼쪽")
+        case .right:
+            return language.text("Right", "오른쪽")
         }
     }
 

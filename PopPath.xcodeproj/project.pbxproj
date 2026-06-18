@@ -24,6 +24,7 @@
 		10A1A0172C23700000100001 /* Nunito-SemiBold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 10A1B0182C23700000100001 /* Nunito-SemiBold.ttf */; };
 		10A1A0182C23700000100001 /* Nunito-Bold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 10A1B0192C23700000100001 /* Nunito-Bold.ttf */; };
 		10A1A0192C23700000100001 /* Nunito-ExtraBold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 10A1B0202C23700000100001 /* Nunito-ExtraBold.ttf */; };
+		10A1A0202C23700000100001 /* Jua-Regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 10A1B0212C23700000100001 /* Jua-Regular.ttf */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -57,6 +58,8 @@
 		10A1B0182C23700000100001 /* Nunito-SemiBold.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Nunito-SemiBold.ttf"; sourceTree = "<group>"; };
 		10A1B0192C23700000100001 /* Nunito-Bold.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Nunito-Bold.ttf"; sourceTree = "<group>"; };
 		10A1B0202C23700000100001 /* Nunito-ExtraBold.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Nunito-ExtraBold.ttf"; sourceTree = "<group>"; };
+		10A1B0212C23700000100001 /* Jua-Regular.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Jua-Regular.ttf"; sourceTree = "<group>"; };
+		10A1B0222C23700000100001 /* Jua-OFL.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "Jua-OFL.txt"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -102,22 +105,6 @@
 			path = PopPath;
 			sourceTree = "<group>";
 		};
-		10A1G0052C23700000100001 /* Fonts */ = {
-			isa = PBXGroup;
-			children = (
-				10A1B0122C23700000100001 /* Fredoka-Regular.ttf */,
-				10A1B0132C23700000100001 /* Fredoka-Medium.ttf */,
-				10A1B0142C23700000100001 /* Fredoka-SemiBold.ttf */,
-				10A1B0152C23700000100001 /* Fredoka-Bold.ttf */,
-				10A1B0162C23700000100001 /* Nunito-Regular.ttf */,
-				10A1B0172C23700000100001 /* Nunito-Medium.ttf */,
-				10A1B0182C23700000100001 /* Nunito-SemiBold.ttf */,
-				10A1B0192C23700000100001 /* Nunito-Bold.ttf */,
-				10A1B0202C23700000100001 /* Nunito-ExtraBold.ttf */,
-			);
-			path = Fonts;
-			sourceTree = "<group>";
-		};
 		10A1G0032C23700000100001 /* PopPathTests */ = {
 			isa = PBXGroup;
 			children = (
@@ -133,6 +120,24 @@
 				10A1B0102C23700000100001 /* PopPathTests.xctest */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		10A1G0052C23700000100001 /* Fonts */ = {
+			isa = PBXGroup;
+			children = (
+				10A1B0122C23700000100001 /* Fredoka-Regular.ttf */,
+				10A1B0132C23700000100001 /* Fredoka-Medium.ttf */,
+				10A1B0142C23700000100001 /* Fredoka-SemiBold.ttf */,
+				10A1B0152C23700000100001 /* Fredoka-Bold.ttf */,
+				10A1B0162C23700000100001 /* Nunito-Regular.ttf */,
+				10A1B0172C23700000100001 /* Nunito-Medium.ttf */,
+				10A1B0182C23700000100001 /* Nunito-SemiBold.ttf */,
+				10A1B0192C23700000100001 /* Nunito-Bold.ttf */,
+				10A1B0202C23700000100001 /* Nunito-ExtraBold.ttf */,
+				10A1B0212C23700000100001 /* Jua-Regular.ttf */,
+				10A1B0222C23700000100001 /* Jua-OFL.txt */,
+			);
+			path = Fonts;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -226,6 +231,7 @@
 				10A1A0172C23700000100001 /* Nunito-SemiBold.ttf in Resources */,
 				10A1A0182C23700000100001 /* Nunito-Bold.ttf in Resources */,
 				10A1A0192C23700000100001 /* Nunito-ExtraBold.ttf in Resources */,
+				10A1A0202C23700000100001 /* Jua-Regular.ttf in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -395,7 +401,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = "";
+				DEVELOPMENT_TEAM = VADVCLGY8Y;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = PopPath/Info.plist;
@@ -423,7 +429,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = "";
+				DEVELOPMENT_TEAM = VADVCLGY8Y;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = PopPath/Info.plist;

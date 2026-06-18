@@ -45,6 +45,31 @@ struct BoardPosition: Hashable {
     let column: Int
 }
 
+struct EscapingBlock: Identifiable, Equatable {
+    let id: UUID
+    let block: PopBlock
+    let row: Int
+    let column: Int
+    let startedAt: Date
+    let duration: TimeInterval
+
+    init(
+        id: UUID,
+        block: PopBlock,
+        row: Int,
+        column: Int,
+        startedAt: Date = .now,
+        duration: TimeInterval = 0.11
+    ) {
+        self.id = id
+        self.block = block
+        self.row = row
+        self.column = column
+        self.startedAt = startedAt
+        self.duration = duration
+    }
+}
+
 struct BoardGenerationProfile: Equatable {
     var emptyChance: Double
     var minimumOpenCells: Int
@@ -489,8 +514,9 @@ enum GameRules {
     }
 }
 
+@MainActor
 enum Haptics {
-    enum Event {
+    enum Event: CaseIterable {
         case escape
         case chain
         case bigChain
@@ -501,26 +527,52 @@ enum Haptics {
         case finish
     }
 
+    private static let lightImpact = UIImpactFeedbackGenerator(style: .light)
+    private static let mediumImpact = UIImpactFeedbackGenerator(style: .medium)
+    private static let heavyImpact = UIImpactFeedbackGenerator(style: .heavy)
+    private static let rigidImpact = UIImpactFeedbackGenerator(style: .rigid)
+    private static let softImpact = UIImpactFeedbackGenerator(style: .soft)
+    private static let notification = UINotificationFeedbackGenerator()
+
+    static func prepare(enabled: Bool) {
+        guard enabled else { return }
+
+        lightImpact.prepare()
+        mediumImpact.prepare()
+        heavyImpact.prepare()
+        rigidImpact.prepare()
+        softImpact.prepare()
+        notification.prepare()
+    }
+
     static func play(_ event: Event, enabled: Bool) {
         guard enabled else { return }
 
         switch event {
         case .escape:
-            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            lightImpact.impactOccurred()
+            lightImpact.prepare()
         case .chain:
-            UIImpactFeedbackGenerator(style: .medium).impactOccurred(intensity: 0.7)
+            mediumImpact.impactOccurred(intensity: 0.7)
+            mediumImpact.prepare()
         case .bigChain:
-            UIImpactFeedbackGenerator(style: .heavy).impactOccurred(intensity: 0.88)
+            heavyImpact.impactOccurred(intensity: 0.88)
+            heavyImpact.prepare()
         case .unlock:
-            UIImpactFeedbackGenerator(style: .rigid).impactOccurred(intensity: 0.72)
+            rigidImpact.impactOccurred(intensity: 0.72)
+            rigidImpact.prepare()
         case .freshPath:
-            UIImpactFeedbackGenerator(style: .soft).impactOccurred(intensity: 0.65)
+            softImpact.impactOccurred(intensity: 0.65)
+            softImpact.prepare()
         case .boardClear:
-            UINotificationFeedbackGenerator().notificationOccurred(.success)
+            notification.notificationOccurred(.success)
+            notification.prepare()
         case .miss:
-            UINotificationFeedbackGenerator().notificationOccurred(.warning)
+            notification.notificationOccurred(.warning)
+            notification.prepare()
         case .finish:
-            UINotificationFeedbackGenerator().notificationOccurred(.success)
+            notification.notificationOccurred(.success)
+            notification.prepare()
         }
     }
 }
@@ -530,52 +582,77 @@ final class SoundEffects {
     static let shared = SoundEffects()
 
     private var players: [AVAudioPlayer] = []
+    private var toneDataCache: [Tone: Data] = [:]
 
     private init() {}
 
-    func play(_ event: Haptics.Event, enabled: Bool) {
+    func prepare(enabled: Bool) {
         guard enabled else { return }
 
-        let tones: [(frequency: Double, duration: Double, amplitude: Double, delay: Double)]
-        switch event {
-        case .escape:
-            tones = [(440, 0.055, 0.11, 0)]
-        case .chain:
-            tones = [(520, 0.05, 0.1, 0), (700, 0.06, 0.08, 0.045)]
-        case .bigChain:
-            tones = [(580, 0.045, 0.11, 0), (760, 0.055, 0.09, 0.04), (920, 0.075, 0.075, 0.09)]
-        case .unlock:
-            tones = [(620, 0.045, 0.085, 0), (820, 0.055, 0.065, 0.04)]
-        case .freshPath:
-            tones = [(392, 0.055, 0.08, 0), (523, 0.07, 0.075, 0.055)]
-        case .boardClear:
-            tones = [(523, 0.06, 0.09, 0), (659, 0.06, 0.08, 0.055), (880, 0.11, 0.075, 0.115)]
-        case .miss:
-            tones = [(150, 0.08, 0.07, 0)]
-        case .finish:
-            tones = [(523, 0.08, 0.08, 0), (659, 0.08, 0.07, 0.075), (784, 0.11, 0.06, 0.15)]
-        }
-
-        for tone in tones {
-            DispatchQueue.main.asyncAfter(deadline: .now() + tone.delay) { [weak self] in
-                self?.playTone(
-                    frequency: tone.frequency,
-                    duration: tone.duration,
-                    amplitude: tone.amplitude
-                )
+        for event in Haptics.Event.allCases {
+            for tone in tones(for: event) {
+                _ = data(for: tone)
             }
         }
     }
 
-    private func playTone(frequency: Double, duration: Double, amplitude: Double) {
+    func play(_ event: Haptics.Event, enabled: Bool) {
+        guard enabled else { return }
+
+        for tone in tones(for: event) {
+            DispatchQueue.main.asyncAfter(deadline: .now() + tone.delay) { [weak self] in
+                self?.playTone(tone)
+            }
+        }
+    }
+
+    private func tones(for event: Haptics.Event) -> [Tone] {
+        switch event {
+        case .escape:
+            return [Tone(frequency: 440, duration: 0.055, amplitude: 0.11, delay: 0)]
+        case .chain:
+            return [
+                Tone(frequency: 520, duration: 0.05, amplitude: 0.1, delay: 0),
+                Tone(frequency: 700, duration: 0.06, amplitude: 0.08, delay: 0.045)
+            ]
+        case .bigChain:
+            return [
+                Tone(frequency: 580, duration: 0.045, amplitude: 0.11, delay: 0),
+                Tone(frequency: 760, duration: 0.055, amplitude: 0.09, delay: 0.04),
+                Tone(frequency: 920, duration: 0.075, amplitude: 0.075, delay: 0.09)
+            ]
+        case .unlock:
+            return [
+                Tone(frequency: 620, duration: 0.045, amplitude: 0.085, delay: 0),
+                Tone(frequency: 820, duration: 0.055, amplitude: 0.065, delay: 0.04)
+            ]
+        case .freshPath:
+            return [
+                Tone(frequency: 392, duration: 0.055, amplitude: 0.08, delay: 0),
+                Tone(frequency: 523, duration: 0.07, amplitude: 0.075, delay: 0.055)
+            ]
+        case .boardClear:
+            return [
+                Tone(frequency: 523, duration: 0.06, amplitude: 0.09, delay: 0),
+                Tone(frequency: 659, duration: 0.06, amplitude: 0.08, delay: 0.055),
+                Tone(frequency: 880, duration: 0.11, amplitude: 0.075, delay: 0.115)
+            ]
+        case .miss:
+            return [Tone(frequency: 150, duration: 0.08, amplitude: 0.07, delay: 0)]
+        case .finish:
+            return [
+                Tone(frequency: 523, duration: 0.08, amplitude: 0.08, delay: 0),
+                Tone(frequency: 659, duration: 0.08, amplitude: 0.07, delay: 0.075),
+                Tone(frequency: 784, duration: 0.11, amplitude: 0.06, delay: 0.15)
+            ]
+        }
+    }
+
+    private func playTone(_ tone: Tone) {
         players = players.filter(\.isPlaying)
 
         do {
-            let data = Self.makeToneData(
-                frequency: frequency,
-                duration: duration,
-                amplitude: amplitude
-            )
+            let data = data(for: tone)
             let player = try AVAudioPlayer(data: data)
             player.prepareToPlay()
             player.play()
@@ -583,6 +660,27 @@ final class SoundEffects {
         } catch {
             assertionFailure("Unable to play generated tone: \(error)")
         }
+    }
+
+    private func data(for tone: Tone) -> Data {
+        if let data = toneDataCache[tone] {
+            return data
+        }
+
+        let data = Self.makeToneData(
+            frequency: tone.frequency,
+            duration: tone.duration,
+            amplitude: tone.amplitude
+        )
+        toneDataCache[tone] = data
+        return data
+    }
+
+    private struct Tone: Hashable {
+        let frequency: Double
+        let duration: Double
+        let amplitude: Double
+        let delay: Double
     }
 
     private static func makeToneData(frequency: Double, duration: Double, amplitude: Double) -> Data {

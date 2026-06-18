@@ -1,5 +1,50 @@
 import SwiftUI
 
+enum AppLanguage: String, CaseIterable, Identifiable {
+    case english = "en"
+    case korean = "ko"
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .english:
+            return "English"
+        case .korean:
+            return "한국어"
+        }
+    }
+
+    var shortName: String {
+        switch self {
+        case .english:
+            return "EN"
+        case .korean:
+            return "한"
+        }
+    }
+
+    func text(_ english: String, _ korean: String) -> String {
+        switch self {
+        case .english:
+            return english
+        case .korean:
+            return korean
+        }
+    }
+}
+
+private struct AppLanguageKey: EnvironmentKey {
+    static let defaultValue: AppLanguage = .english
+}
+
+extension EnvironmentValues {
+    var appLanguage: AppLanguage {
+        get { self[AppLanguageKey.self] }
+        set { self[AppLanguageKey.self] = newValue }
+    }
+}
+
 extension Color {
     init(hex: UInt, alpha: Double = 1) {
         self.init(
@@ -25,12 +70,28 @@ extension Color {
 }
 
 extension Font {
-    static func ppDisplay(_ size: CGFloat, weight: Font.Weight = .semibold) -> Font {
-        .custom(fredokaName(for: weight), size: size)
+    static func ppDisplay(
+        _ size: CGFloat,
+        weight: Font.Weight = .semibold,
+        language: AppLanguage = .english
+    ) -> Font {
+        if language == .korean {
+            return .custom("Jua-Regular", size: size).weight(koreanWeight(for: weight))
+        }
+
+        return .custom(fredokaName(for: weight), size: size)
     }
 
-    static func ppBody(_ size: CGFloat, weight: Font.Weight = .regular) -> Font {
-        .custom(nunitoName(for: weight), size: size)
+    static func ppBody(
+        _ size: CGFloat,
+        weight: Font.Weight = .regular,
+        language: AppLanguage = .english
+    ) -> Font {
+        if language == .korean {
+            return .custom("Jua-Regular", size: size).weight(koreanWeight(for: weight))
+        }
+
+        return .custom(nunitoName(for: weight), size: size)
     }
 
     private static func fredokaName(for weight: Font.Weight) -> String {
@@ -61,6 +122,19 @@ extension Font {
         }
         return "Nunito-Regular"
     }
+
+    private static func koreanWeight(for weight: Font.Weight) -> Font.Weight {
+        if weight == .heavy || weight == .black || weight == .bold {
+            return .bold
+        }
+        if weight == .semibold {
+            return .semibold
+        }
+        if weight == .medium {
+            return .medium
+        }
+        return .regular
+    }
 }
 
 extension View {
@@ -70,6 +144,8 @@ extension View {
 }
 
 struct PrimaryPopButton: View {
+    @Environment(\.appLanguage) private var language
+
     let title: String
     let systemImage: String?
     let action: () -> Void
@@ -88,7 +164,7 @@ struct PrimaryPopButton: View {
                         .font(.system(size: 18, weight: .bold, design: .rounded))
                 }
                 Text(title)
-                    .font(.ppDisplay(22, weight: .semibold))
+                    .font(.ppDisplay(22, weight: .semibold, language: language))
                     .lineLimit(1)
                     .minimumScaleFactor(0.82)
             }
@@ -113,6 +189,8 @@ struct PrimaryPopButton: View {
 }
 
 struct SecondaryPopButton: View {
+    @Environment(\.appLanguage) private var language
+
     let title: String
     let detail: String
     let systemImage: String
@@ -126,14 +204,14 @@ struct SecondaryPopButton: View {
                     .frame(width: 22)
 
                 Text(title)
-                    .font(.ppDisplay(16, weight: .semibold))
+                    .font(.ppDisplay(16, weight: .semibold, language: language))
                     .lineLimit(1)
                     .minimumScaleFactor(0.82)
 
                 Spacer(minLength: 10)
 
                 Text(detail)
-                    .font(.ppBody(12, weight: .heavy))
+                    .font(.ppBody(12, weight: .heavy, language: language))
                     .foregroundStyle(Color.ppMintText)
                     .lineLimit(1)
                     .minimumScaleFactor(0.72)
@@ -184,6 +262,8 @@ struct IconTileButton: View {
 }
 
 struct PillStat: View {
+    @Environment(\.appLanguage) private var language
+
     let label: String
     let value: String
     var valueColor: Color = .ppInkGray
@@ -191,10 +271,10 @@ struct PillStat: View {
     var body: some View {
         HStack(spacing: 8) {
             Text(label)
-                .font(.ppBody(12, weight: .heavy))
+                .font(.ppBody(12, weight: .heavy, language: language))
                 .foregroundStyle(Color.ppMintText.opacity(0.82))
             Text(value)
-                .font(.ppDisplay(17, weight: .bold))
+                .font(.ppDisplay(17, weight: .bold, language: language))
                 .monospacedDigit()
                 .foregroundStyle(valueColor)
                 .lineLimit(1)

@@ -26,6 +26,7 @@ struct RootView: View {
     @AppStorage("hapticsEnabled") private var hapticsEnabled = true
     @AppStorage("colorAssist") private var colorAssist = false
     @AppStorage("reduceMotion") private var reduceMotion = false
+    @AppStorage("appLanguage") private var appLanguageRaw = AppLanguage.english.rawValue
     #if DEBUG
     @State private var handledLaunchArguments = false
     #endif
@@ -36,6 +37,7 @@ struct RootView: View {
                 .ignoresSafeArea()
 
             currentScreen
+                .environment(\.appLanguage, appLanguage)
                 .transition(.opacity.combined(with: .scale(scale: 0.985)))
         }
         .preferredColorScheme(.light)
@@ -134,6 +136,7 @@ struct RootView: View {
                 hapticsEnabled: $hapticsEnabled,
                 colorAssist: $colorAssist,
                 reduceMotion: $reduceMotion,
+                language: appLanguageBinding,
                 onBack: {
                     withAnimation(.spring(response: 0.38, dampingFraction: 0.86)) {
                         route = .home
@@ -141,6 +144,17 @@ struct RootView: View {
                 }
             )
         }
+    }
+
+    private var appLanguage: AppLanguage {
+        AppLanguage(rawValue: appLanguageRaw) ?? .english
+    }
+
+    private var appLanguageBinding: Binding<AppLanguage> {
+        Binding(
+            get: { appLanguage },
+            set: { appLanguageRaw = $0.rawValue }
+        )
     }
 
     private var fallbackSummary: RoundSummary {
@@ -183,6 +197,13 @@ struct RootView: View {
         if arguments.contains("-popPathShowRecords") {
             withAnimation(.spring(response: 0.38, dampingFraction: 0.86)) {
                 route = .records
+            }
+            return
+        }
+
+        if arguments.contains("-popPathShowTutorial") {
+            withAnimation(.spring(response: 0.38, dampingFraction: 0.86)) {
+                route = .tutorial
             }
             return
         }

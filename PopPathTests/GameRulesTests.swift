@@ -150,6 +150,7 @@ final class GameRulesTests: XCTestCase {
     func testChainScoringIncrementsByCurrentChain() {
         let model = GameModel(makeInitialBoard: false)
         var board = GameRules.emptyBoard()
+        board[0][0] = PopBlock(direction: .up, tone: .mistBlue)
         board[3][5] = PopBlock(direction: .right, tone: .mistBlue)
         board[4][0] = PopBlock(direction: .left, tone: .lavenderMist)
 
@@ -177,6 +178,30 @@ final class GameRulesTests: XCTestCase {
         model.tap(row: 2, column: 1, hapticsEnabled: false)
         XCTAssertEqual(model.chain, 0)
         XCTAssertEqual(model.score, 10)
+    }
+
+    @MainActor
+    func testSuccessfulTapFreesPathImmediately() {
+        let model = GameModel(makeInitialBoard: false)
+        var board = GameRules.emptyBoard()
+        board[0][0] = PopBlock(direction: .up, tone: .mistBlue)
+        board[3][2] = PopBlock(direction: .right, tone: .lavenderMist)
+        board[3][5] = PopBlock(direction: .right, tone: .mistBlue)
+
+        model.loadBoardForTesting(board)
+        XCTAssertFalse(GameRules.openPositions(in: model.board).contains(BoardPosition(row: 3, column: 2)))
+
+        model.tap(row: 3, column: 5, hapticsEnabled: false, soundEnabled: false)
+
+        XCTAssertNil(model.board[3][5])
+        XCTAssertEqual(model.escapingBlocks.count, 1)
+        XCTAssertTrue(GameRules.openPositions(in: model.board).contains(BoardPosition(row: 3, column: 2)))
+
+        model.tap(row: 3, column: 2, hapticsEnabled: false, soundEnabled: false)
+
+        XCTAssertNil(model.board[3][2])
+        XCTAssertEqual(model.chain, 2)
+        XCTAssertEqual(model.escapingBlocks.count, 2)
     }
 
     @MainActor
@@ -284,12 +309,12 @@ final class GameRulesTests: XCTestCase {
         model.tap(row: 4, column: 0, hapticsEnabled: false)
         model.finishRound(hapticsEnabled: false, soundEnabled: false)
 
-        XCTAssertEqual(model.dailyBest, 30)
-        XCTAssertEqual(model.roundSummary?.dailyBest, 30)
+        XCTAssertEqual(model.dailyBest, 250)
+        XCTAssertEqual(model.roundSummary?.dailyBest, 250)
         XCTAssertEqual(model.roundSummary?.mode, .daily)
         XCTAssertEqual(
             UserDefaults.standard.integer(forKey: GameModel.dailyBestStorageKey(for: challenge.id)),
-            30
+            250
         )
     }
 
@@ -307,7 +332,7 @@ final class GameRulesTests: XCTestCase {
 
         XCTAssertEqual(model.stats.roundsPlayed, 1)
         XCTAssertEqual(model.stats.totalPops, 2)
-        XCTAssertEqual(model.stats.bestScore, 30)
+        XCTAssertEqual(model.stats.bestScore, 250)
         XCTAssertTrue(model.stats.unlockedAchievementIDs.contains("first_run"))
         XCTAssertEqual(GameModel.loadStats(), model.stats)
         XCTAssertEqual(model.roundSummary?.unlockedAchievements.map(\.id), ["first_run"])
@@ -334,6 +359,11 @@ final class GameRulesTests: XCTestCase {
         XCTAssertTrue(summary.shareText.contains("Best 2,000"))
         XCTAssertTrue(summary.shareText.contains("Unlocks 3"))
         XCTAssertTrue(summary.shareText.contains("Accuracy 92%"))
+
+        let koreanShareText = summary.shareText(language: .korean)
+        XCTAssertTrue(koreanShareText.contains("점수 1,234"))
+        XCTAssertTrue(koreanShareText.contains("최고 2,000"))
+        XCTAssertTrue(koreanShareText.contains("정확도 92%"))
     }
 
     private func boardSignature(_ board: [[PopBlock?]]) -> [[String]] {
