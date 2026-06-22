@@ -71,6 +71,17 @@ Status: Complete
 - Added shareable run summaries from the result screen.
 - Added tests for signatures, difficulty profiles, recent board recording, stats persistence, achievements, and share text.
 
+## Sprint 5A: Scoring economy, feedback timing & HUD cues
+
+Status: Complete
+
+- Rebalanced the economy (WI-5.1): per-pop chain multiplier capped with a small continuation reward, board-clear bonus scaled with a chain cap lifted above 10, unlock bonus retuned upward, and per-pop floating "+N" markers at the cleared cell.
+- Synced audio/haptics to the visual pop by removing the 10ms feedback hop, and stopped cutting in-flight pops when the round ends (WI-5.2).
+- Added a visible, pause-aware chain-decay indicator on the CHAIN tile driven by a published decay deadline sampled through a TimelineView (WI-5.3).
+- Added a low-time urgency cue on the TIME tile: a visual pulse/colour shift plus a distinct per-second tick haptic in the final seconds (WI-5.4).
+- Added tests for the per-pop cap, board-clear scaling, floating score, and chain-decay freeze-on-pause; recomputed the affected score assertions.
+- Adversarial review pass: fixed an end-of-urgency pulse that never settled and tightened chain-decay state hygiene (miss path, duration reset, distinct tick haptic, mid-deal suppression).
+
 ## Remaining Owner-Side Release Inputs
 
 - Apple Developer Team/signing account for device archive and App Store upload.

@@ -246,6 +246,17 @@ struct BoardEvent: Identifiable, Equatable {
     let duration: UInt64
 }
 
+/// A per-pop floating "+N" that rises from the cell that was cleared, so the score earned by
+/// each individual pop is legible at the point of action (E4). Carried in its own short-lived
+/// list rather than the central toast queue, because it is positional, not an announcement.
+struct FloatingScore: Identifiable, Equatable {
+    let id = UUID()
+    let row: Int
+    let column: Int
+    let amount: Int
+    let chain: Int
+}
+
 /// Explicit round lifecycle. `running` (the actively-ticking state) is kept as a computed
 /// mirror for existing call sites and tests.
 enum RunState: Equatable {
@@ -288,7 +299,18 @@ final class GameModel: ObservableObject {
     @Published private(set) var boardGeneration = 0
     @Published private(set) var stats: PlayerStats
     @Published private(set) var escapingBlocks: [EscapingBlock] = []
+    /// Short-lived per-pop "+N" markers (E4). The view animates each rising/fading at its
+    /// cell; the model just owns the data and retires each after a fixed lifetime.
+    @Published private(set) var floatingScores: [FloatingScore] = []
+    /// Deadline at which the current chain decays to 0, published so the CHAIN HUD tile can
+    /// draw a depleting indicator (E3/WI-5.3). `nil` when no chain is active. Frozen on pause
+    /// (see `pausedChainDecayRemaining`). Updated only on pops — never per frame.
+    @Published private(set) var chainDecayDeadline: Date?
     @Published var roundSummary: RoundSummary?
+
+    /// Seconds remaining at which the TIME tile starts its low-time urgency cue (WI-5.4).
+    /// Shared so the view's visual pulse and the model's tick haptic agree on the threshold.
+    nonisolated static let lowTimeUrgencySeconds = 5
 
     nonisolated static let bestScoreStorageKey = "bestScore"
     nonisolated static let playerStatsStorageKey = "playerStats.v1"
@@ -307,11 +329,34 @@ final class GameModel: ObservableObject {
     private var roundClock: RoundClock?
     private var pendingRefreshReason: BoardRefreshReason?
     private var lastMissFeedbackAt: Date?
+    /// Full window (seconds) of the current chain's decay, used as the indicator's denominator.
+    private var chainDecayDuration: TimeInterval = 0
+    /// Remaining chain-decay seconds captured at pause, so the indicator freezes and resume
+    /// restores exactly what was left instead of granting a fresh full window.
+    private var pausedChainDecayRemaining: TimeInterval?
     private let now: () -> Date
     /// Seconds a miss shaves off the round deadline (E2).
     private let missTimePenalty: TimeInterval = 2
     /// Consolation points per block stranded when the board gets stuck (D6).
     private let strandedBlockReward = 3
+
+    // MARK: Scoring economy (WI-5.1)
+    /// Base points for a single pop, multiplied by the (capped) chain length.
+    private let popBaseScore = 10
+    /// Per-pop chain multiplier cap (E1): beyond this a chain keeps the chain mechanics alive
+    /// but stops the per-pop term running away and dwarfing clear/unlock bonuses.
+    private let perPopChainCap = 6
+    /// Small flat reward for each pop sustained past the cap, so long chains still feel good.
+    private let perPopContinuationStep = 4
+    /// Board-clear bonus base, plus a chain-scaled term whose cap is lifted above 10 (E6).
+    private let boardClearBaseBonus = 200
+    private let boardClearChainCap = 15
+    private let boardClearChainStep = 22
+    /// Unlock bonus per newly opened path, scaled by chain — retuned up relative to the now
+    /// capped per-pop term so opening paths is a headline reward (E1/E6).
+    private let unlockBaseBonus = 14
+    /// Lifetime of a per-pop floating "+N" marker before it is retired.
+    private let floatingScoreLifetime: TimeInterval = 0.7
 
     init(makeInitialBoard: Bool = true, now: @escaping () -> Date = { Date() }) {
         self.now = now
@@ -381,6 +426,10 @@ final class GameModel: ObservableObject {
         maxChain = 0
         roundMetrics = .zero
         escapingBlocks = []
+        floatingScores = []
+        chainDecayDeadline = nil
+        pausedChainDecayRemaining = nil
+        chainDecayDuration = 0
         // Clock first so the difficulty source of truth sees elapsed == 0 for the opener.
         roundClock = RoundClock(start: now(), duration: TimeInterval(GameRules.roundSeconds))
         time = GameRules.roundSeconds
@@ -413,6 +462,7 @@ final class GameModel: ObservableObject {
         pendingRefreshReason = nil
         isDealing = false
         escapingBlocks = []
+        floatingScores = []
         boardToast = nil
         pendingEvents = []
 
@@ -425,6 +475,11 @@ final class GameModel: ObservableObject {
         guard runState == .running else { return }
         runState = .paused
         roundClock?.pause(at: now())
+        // Freeze the chain-decay indicator at whatever was left, so resume restores exactly
+        // that rather than handing back a fresh full window.
+        if chain > 0, let deadline = chainDecayDeadline {
+            pausedChainDecayRemaining = max(0, deadline.timeIntervalSince(now()))
+        }
         timerTask?.cancel()
         chainResetTask?.cancel()
         boardRefreshTask?.cancel()
@@ -439,7 +494,11 @@ final class GameModel: ObservableObject {
         runState = .running
         syncTimeFromClock()
         startTimer()
-        if chain > 0 {
+        if chain > 0, let remaining = pausedChainDecayRemaining {
+            chainDecayDeadline = now().addingTimeInterval(remaining)
+            pausedChainDecayRemaining = nil
+            armChainResetTask(after: remaining)
+        } else if chain > 0 {
             scheduleChainReset()
         }
         if let pendingRefreshReason {
@@ -460,9 +519,13 @@ final class GameModel: ObservableObject {
         boardRefreshTask = nil
         toastTask?.cancel()
         chain = 0
+        chainDecayDeadline = nil
+        pausedChainDecayRemaining = nil
+        chainDecayDuration = 0
         boardToast = nil
         pendingEvents = []
         escapingBlocks = []
+        floatingScores = []
 
         let completedMetrics = roundMetrics
         if score > best {
@@ -492,9 +555,13 @@ final class GameModel: ObservableObject {
         boardRefreshTask = nil
         toastTask?.cancel()
         chain = 0
+        chainDecayDeadline = nil
+        pausedChainDecayRemaining = nil
+        chainDecayDuration = 0
         boardToast = nil
         pendingEvents = []
         escapingBlocks = []
+        floatingScores = []
         roundSummary = nil
     }
 
@@ -569,7 +636,9 @@ final class GameModel: ObservableObject {
 
             roundMetrics.pops += 1
             chain = nextChain
-            score += 10 * chain
+            let popScore = perPopScore(forChain: chain)
+            score += popScore
+            emitFloatingScore(amount: popScore, row: row, column: column, chain: chain)
             maxChain = max(maxChain, chain)
             let feedbackEvent = Self.feedbackEvent(forChain: chain)
             showChainToastIfNeeded()
@@ -588,6 +657,11 @@ final class GameModel: ObservableObject {
         } else {
             chainResetTask?.cancel()
             chain = 0
+            // A miss ends the chain, so retire the decay indicator with it (keeps the
+            // invariant chain>0 ⇔ chainDecayDeadline != nil).
+            chainDecayDeadline = nil
+            pausedChainDecayRemaining = nil
+            chainDecayDuration = 0
             roundMetrics.misses += 1
 
             block.isMiss = true
@@ -658,7 +732,11 @@ final class GameModel: ObservableObject {
         boardRefreshTask?.cancel()
         boardRefreshTask = nil
         toastTask?.cancel()
-        escapingBlocks = []
+        // Leave `escapingBlocks` in place so any pop still mid-flight when the clock expires
+        // finishes its animation instead of being cut off (F2); each block self-retires.
+        chainDecayDeadline = nil
+        pausedChainDecayRemaining = nil
+        chainDecayDuration = 0
         pendingEvents = []
 
         let completedMetrics = roundMetrics
@@ -744,6 +822,10 @@ final class GameModel: ObservableObject {
         self.pendingRefreshReason = nil
         self.lastMissFeedbackAt = nil
         self.escapingBlocks = []
+        self.floatingScores = []
+        self.chainDecayDeadline = nil
+        self.pausedChainDecayRemaining = nil
+        self.chainDecayDuration = 0
         self.roundSummary = nil
     }
 
@@ -772,6 +854,12 @@ final class GameModel: ObservableObject {
         time = roundClock.remainingSeconds(at: now())
         if time <= 0 {
             finishRound()
+        } else if time <= Self.lowTimeUrgencySeconds, !isDealing {
+            // Low-time urgency cue (WI-5.4): a distinct soft per-second tick in the final
+            // seconds. Visual pulse/colour lives in the view; this is the optional haptic,
+            // gated by the same toggle as every other haptic and suppressed mid-deal when the
+            // player can't act.
+            Haptics.play(.tick, enabled: feedbackHapticsEnabled)
         }
     }
 
@@ -780,10 +868,25 @@ final class GameModel: ObservableObject {
         time = roundClock.remainingSeconds(at: now())
     }
 
+    /// The chain-decay grace window grows with the chain (E3): a longer streak earns a little
+    /// more breathing room before it lapses, and the indicator's denominator tracks it.
+    private func chainDecayWindow(forChain chain: Int) -> TimeInterval {
+        1.4 + Double(min(max(chain, 1), 6)) * 0.16
+    }
+
     private func scheduleChainReset() {
+        let window = chainDecayWindow(forChain: chain)
+        chainDecayDuration = window
+        chainDecayDeadline = now().addingTimeInterval(window)
+        pausedChainDecayRemaining = nil
+        armChainResetTask(after: window)
+    }
+
+    private func armChainResetTask(after seconds: TimeInterval) {
         chainResetTask?.cancel()
+        let nanoseconds = UInt64(max(0, seconds) * 1_000_000_000)
         chainResetTask = Task { [weak self] in
-            try? await Task.sleep(nanoseconds: 1_500_000_000)
+            try? await Task.sleep(nanoseconds: nanoseconds)
             if Task.isCancelled { return }
             self?.resetChain()
         }
@@ -792,6 +895,48 @@ final class GameModel: ObservableObject {
     private func resetChain() {
         guard running else { return }
         chain = 0
+        chainDecayDeadline = nil
+        pausedChainDecayRemaining = nil
+        chainDecayDuration = 0
+    }
+
+    /// Remaining fraction (1→0) of the active chain's decay window at `date`. Frozen while
+    /// paused. Sampled by the HUD's chain-decay indicator via a TimelineView, so the model
+    /// never has to publish on every frame.
+    func chainDecayFraction(at date: Date) -> Double {
+        guard chain > 0, chainDecayDuration > 0 else { return 0 }
+        let remaining: TimeInterval
+        if let frozen = pausedChainDecayRemaining {
+            remaining = frozen
+        } else if let deadline = chainDecayDeadline {
+            remaining = deadline.timeIntervalSince(date)
+        } else {
+            return 0
+        }
+        return min(1, max(0, remaining / chainDecayDuration))
+    }
+
+    /// Per-pop score with the runaway cap (E1): linear up to `perPopChainCap`, then a small
+    /// flat continuation per pop so long chains still pay without dwarfing other rewards.
+    private func perPopScore(forChain chain: Int) -> Int {
+        let capped = min(chain, perPopChainCap)
+        let continuation = max(0, chain - perPopChainCap)
+        return popBaseScore * capped + continuation * perPopContinuationStep
+    }
+
+    private func emitFloatingScore(amount: Int, row: Int, column: Int, chain: Int) {
+        let marker = FloatingScore(row: row, column: column, amount: amount, chain: chain)
+        floatingScores.append(marker)
+        let maximumVisible = 8
+        if floatingScores.count > maximumVisible {
+            floatingScores.removeFirst(floatingScores.count - maximumVisible)
+        }
+        let markerID = marker.id
+        let lifetime = floatingScoreLifetime
+        Task { [weak self] in
+            try? await Task.sleep(nanoseconds: UInt64(lifetime * 1_000_000_000))
+            self?.floatingScores.removeAll { $0.id == markerID }
+        }
     }
 
     private func removeBlock(id: UUID, row: Int, column: Int) {
@@ -924,7 +1069,7 @@ final class GameModel: ObservableObject {
 
     private func awardBoardClearBonus() {
         roundMetrics.boardClears += 1
-        let bonus = 180 + min(max(chain, 1), 10) * 20
+        let bonus = boardClearBaseBonus + min(max(chain, 1), boardClearChainCap) * boardClearChainStep
         score += bonus
         queueFeedback(.boardClear, hapticsEnabled: feedbackHapticsEnabled, soundEnabled: feedbackSoundEnabled)
         enqueueEvent(
@@ -948,7 +1093,7 @@ final class GameModel: ObservableObject {
         roundMetrics.unlocks += newlyOpened
         roundMetrics.bestUnlockBurst = max(roundMetrics.bestUnlockBurst, newlyOpened)
 
-        let bonus = newlyOpened * 7 * max(chain, 1)
+        let bonus = newlyOpened * unlockBaseBonus * max(chain, 1)
         score += bonus
         let feedbackEvent: Haptics.Event = newlyOpened >= 3 ? .bigChain : .unlock
         queueFeedback(feedbackEvent, hapticsEnabled: feedbackHapticsEnabled, soundEnabled: feedbackSoundEnabled)
@@ -1038,6 +1183,7 @@ final class GameModel: ObservableObject {
             rememberClassicBoard(nextBoard)
         }
         escapingBlocks = []
+        floatingScores = []
         board = nextBoard
         boardGeneration += 1
         // The "FRESH PATH" announcement is about the board we just replaced; once a fresh
@@ -1067,11 +1213,11 @@ final class GameModel: ObservableObject {
     }
 
     private func queueFeedback(_ event: Haptics.Event, hapticsEnabled: Bool, soundEnabled: Bool) {
-        Task { @MainActor in
-            try? await Task.sleep(nanoseconds: 10_000_000)
-            Haptics.play(event, enabled: hapticsEnabled)
-            SoundEffects.shared.play(event, enabled: soundEnabled)
-        }
+        // Fire in sync with the visual pop (F9): the prior 10ms Task hop pushed audio/haptics
+        // a frame behind the on-screen pop. Miss feedback is already rate-limited by the
+        // caller via `shouldEmitMissFeedback`.
+        Haptics.play(event, enabled: hapticsEnabled)
+        SoundEffects.shared.play(event, enabled: soundEnabled)
     }
 
     private func showChainToastIfNeeded() {

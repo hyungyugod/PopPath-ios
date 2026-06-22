@@ -21,12 +21,13 @@ struct GameView: View {
         VStack(spacing: 12) {
             topBar
 
-            HUDView(score: game.score, time: game.time, chain: game.chain)
+            HUDView(game: game, reduceMotion: reduceMotion)
 
             BoardView(
                 board: game.board,
                 openPositions: game.openPositions,
                 escapingBlocks: game.escapingBlocks,
+                floatingScores: game.floatingScores,
                 boardToast: game.boardToast,
                 boardGeneration: game.boardGeneration,
                 colorAssist: colorAssist,
@@ -260,25 +261,62 @@ private struct PausedOverlay: View {
     }
 }
 
+/// Continuous low-time urgency state for the TIME tile (WI-5.4).
+private struct TimeUrgency {
+    let active: Bool
+    let reduceMotion: Bool
+}
+
+/// Chain-decay indicator state for the CHAIN tile (WI-5.3). `fraction` is sampled by a
+/// TimelineView so the model never publishes per frame; `isPaused` stops the sampling so the
+/// bar freezes exactly where it was.
+private struct ChainDecay {
+    let isActive: Bool
+    let isPaused: Bool
+    let fraction: (Date) -> Double
+    let reduceMotion: Bool
+}
+
 private struct HUDView: View {
     @Environment(\.appLanguage) private var language
 
-    let score: Int
-    let time: Int
-    let chain: Int
+    // Observes the model directly because the CHAIN tile samples chain-decay live. Every
+    // publish re-runs this body, but the SCORE/TIME tiles take only value inputs so SwiftUI
+    // value-diffs and skips re-rendering them; only the CHAIN tile (which must sample) re-bodies.
+    @ObservedObject var game: GameModel
+    let reduceMotion: Bool
 
     var body: some View {
         HStack(spacing: 8) {
-            HUDTile(label: language.text("SCORE", "점수"), value: score.formatted())
-            HUDTile(label: language.text("TIME", "시간"), value: "\(time)")
-            HUDTile(label: language.text("CHAIN", "체인"), value: "×\(chain)", isChain: true, boost: chainBoost)
+            HUDTile(label: language.text("SCORE", "점수"), value: game.score.formatted())
+            HUDTile(
+                label: language.text("TIME", "시간"),
+                value: "\(game.time)",
+                urgency: TimeUrgency(active: isTimeUrgent, reduceMotion: reduceMotion)
+            )
+            HUDTile(
+                label: language.text("CHAIN", "체인"),
+                value: "×\(game.chain)",
+                isChain: true,
+                boost: chainBoost,
+                decay: ChainDecay(
+                    isActive: game.chain > 0,
+                    isPaused: game.runState != .running,
+                    fraction: { game.chainDecayFraction(at: $0) },
+                    reduceMotion: reduceMotion
+                )
+            )
         }
         .frame(height: 58)
     }
 
+    private var isTimeUrgent: Bool {
+        game.runState == .running && game.time <= GameModel.lowTimeUrgencySeconds && game.time > 0
+    }
+
     private var chainBoost: Double {
-        guard chain > 1 else { return 0 }
-        return min(Double(chain) / 8, 1)
+        guard game.chain > 1 else { return 0 }
+        return min(Double(game.chain) / 8, 1)
     }
 }
 
@@ -289,18 +327,22 @@ private struct HUDTile: View {
     let value: String
     var isChain = false
     var boost = 0.0
+    var urgency: TimeUrgency?
+    var decay: ChainDecay?
+
+    @State private var urgencyPulse = false
 
     var body: some View {
         VStack(spacing: 2) {
             Text(label)
                 .font(.ppBody(10, weight: .heavy, language: language))
                 .tracking(language == .korean ? 0 : 0.9)
-                .foregroundStyle(isChain ? Color.ppMintText : Color.ppWarmGray)
+                .foregroundStyle(labelColor)
             Text(value)
                 .font(.ppDisplay(22, weight: .bold, language: language))
                 .monospacedDigit()
                 .contentTransition(.numericText())
-                .foregroundStyle(chainValueColor)
+                .foregroundStyle(valueColor)
                 .lineLimit(1)
                 .minimumScaleFactor(0.74)
         }
@@ -311,27 +353,107 @@ private struct HUDTile: View {
                 .fill(Color.ppCardCream)
                 .overlay(
                     RoundedRectangle(cornerRadius: 15, style: .continuous)
-                        .stroke(chainStrokeColor, lineWidth: isChain ? 1 + boost * 2 : 0)
+                        .stroke(strokeColor, lineWidth: strokeWidth)
                 )
                 .shadow(
-                    color: isChain ? Color.ppFreshMint.opacity(0.12 + boost * 0.24) : Color.ppInkGray.opacity(0.14),
-                    radius: isChain ? 13 + boost * 10 : 13,
+                    color: shadowColor,
+                    radius: shadowRadius,
                     x: 0,
                     y: 5
                 )
         )
-        .scaleEffect(isChain ? 1 + boost * 0.045 : 1)
+        .overlay(alignment: .bottom) { chainDecayBar }
+        .scaleEffect(tileScale)
         .animation(.spring(response: 0.24, dampingFraction: 0.55), value: value)
+        .animation(urgencyAnimation, value: urgencyPulse)
+        .onChange(of: urgency?.active) { _, _ in syncUrgencyPulse() }
+        .onAppear { syncUrgencyPulse() }
     }
 
-    private var chainValueColor: Color {
+    private var shouldPulse: Bool {
+        isUrgentActive && !(urgency?.reduceMotion ?? true)
+    }
+
+    /// While urgency is active, the pulse repeats forever; the moment it ENDS the curve must
+    /// become finite so flipping `urgencyPulse` back to false settles the tile to rest instead
+    /// of leaving a repeatForever animation oscillating indefinitely.
+    private var urgencyAnimation: Animation? {
+        if shouldPulse {
+            return .easeInOut(duration: 0.5).repeatForever(autoreverses: true)
+        }
+        if urgency?.reduceMotion ?? true {
+            return nil
+        }
+        return .easeInOut(duration: 0.25)
+    }
+
+    @ViewBuilder
+    private var chainDecayBar: some View {
+        if isChain, let decay {
+            TimelineView(.animation(minimumInterval: 1.0 / 30.0, paused: !decay.isActive || decay.isPaused)) { context in
+                let fraction = decay.isActive ? CGFloat(decay.fraction(context.date)) : 0
+                GeometryReader { proxy in
+                    Capsule(style: .continuous)
+                        .fill(fraction > 0.4 ? Color.ppFreshMint : Color.ppSoftCoral)
+                        .frame(width: max(0, proxy.size.width * fraction))
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .frame(height: 3)
+                .opacity(decay.isActive ? 1 : 0)
+                .padding(.horizontal, 11)
+                .padding(.bottom, 5)
+            }
+        }
+    }
+
+    private var isUrgentActive: Bool {
+        urgency?.active ?? false
+    }
+
+    private var labelColor: Color {
+        if isUrgentActive { return .ppSoftCoral }
+        return isChain ? .ppMintText : .ppWarmGray
+    }
+
+    private var valueColor: Color {
+        if isUrgentActive { return .ppSoftCoral }
         guard isChain else { return .ppInkGray }
         return boost >= 0.62 ? .ppSoftCoral : .ppMintText
     }
 
-    private var chainStrokeColor: Color {
+    private var strokeColor: Color {
+        if isUrgentActive { return Color.ppSoftCoral.opacity(0.45 + (urgencyPulse ? 0.35 : 0)) }
         guard isChain else { return .clear }
         return (boost >= 0.62 ? Color.ppSoftCoral : Color.ppFreshMint).opacity(0.28 + boost * 0.48)
+    }
+
+    private var strokeWidth: CGFloat {
+        if isUrgentActive { return 1.5 }
+        return isChain ? 1 + boost * 2 : 0
+    }
+
+    private var shadowColor: Color {
+        if isUrgentActive { return Color.ppSoftCoral.opacity(0.22) }
+        return isChain ? Color.ppFreshMint.opacity(0.12 + boost * 0.24) : Color.ppInkGray.opacity(0.14)
+    }
+
+    private var shadowRadius: CGFloat {
+        isChain ? 13 + boost * 10 : 13
+    }
+
+    private var tileScale: CGFloat {
+        if isUrgentActive, !(urgency?.reduceMotion ?? true) {
+            return urgencyPulse ? 1.045 : 1
+        }
+        return isChain ? 1 + boost * 0.045 : 1
+    }
+
+    private func syncUrgencyPulse() {
+        guard isUrgentActive, !(urgency?.reduceMotion ?? true) else {
+            urgencyPulse = false
+            return
+        }
+        urgencyPulse = true
     }
 }
 
@@ -339,6 +461,7 @@ private struct BoardView: View {
     let board: [[PopBlock?]]
     let openPositions: Set<BoardPosition>
     let escapingBlocks: [EscapingBlock]
+    let floatingScores: [FloatingScore]
     let boardToast: BoardToast?
     let boardGeneration: Int
     let colorAssist: Bool
@@ -395,6 +518,19 @@ private struct BoardView: View {
                             y: CGFloat(escapingBlock.row) * (cellSize + gridSpacing)
                         )
                         .allowsHitTesting(false)
+                    }
+
+                    // Per-pop "+N" markers (E4), positioned at the cell that cleared and
+                    // animating independently of the pop's own burst so the number stays
+                    // legible as it rises.
+                    ForEach(floatingScores) { floatingScore in
+                        FloatingScoreView(amount: floatingScore.amount, reduceMotion: reduceMotion)
+                            .frame(width: cellSize, height: cellSize)
+                            .offset(
+                                x: CGFloat(floatingScore.column) * (cellSize + gridSpacing),
+                                y: CGFloat(floatingScore.row) * (cellSize + gridSpacing)
+                            )
+                            .allowsHitTesting(false)
                     }
                 }
                 .coordinateSpace(name: Self.boardCoordinateSpace)
@@ -572,6 +708,35 @@ private struct EscapingBlockView: View {
         let slideProgress = ppEaseOutCubic(ppUnit(progress / 0.7))
         let distance = cellSize * (0.34 + burstLevel * 0.18)
         return escapingBlock.block.direction.vector.scaled(by: distance * slideProgress)
+    }
+}
+
+private struct FloatingScoreView: View {
+    let amount: Int
+    let reduceMotion: Bool
+    @State private var progress: CGFloat = 0
+
+    var body: some View {
+        Text("+\(amount)")
+            .font(.system(size: 15, weight: .heavy, design: .rounded))
+            .monospacedDigit()
+            .foregroundStyle(Color.ppMintButtonText)
+            .shadow(color: Color.ppWarmCream.opacity(0.85), radius: 2, x: 0, y: 1)
+            .offset(y: reduceMotion ? -10 : -(8 + 34 * progress))
+            .opacity(opacity)
+            .scaleEffect(reduceMotion ? 1 : 0.7 + 0.5 * ppEaseOutCubic(ppUnit(progress / 0.4)))
+            .onAppear {
+                withAnimation(.easeOut(duration: 0.62)) {
+                    progress = 1
+                }
+            }
+    }
+
+    private var opacity: Double {
+        if reduceMotion {
+            return Double(1 - ppSmoothStep(ppUnit((progress - 0.4) / 0.6)))
+        }
+        return Double(1 - ppSmoothStep(ppUnit((progress - 0.25) / 0.75)))
     }
 }
 

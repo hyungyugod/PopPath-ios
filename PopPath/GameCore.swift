@@ -613,6 +613,9 @@ enum Haptics {
         case boardClear
         case miss
         case finish
+        /// Low-time urgency tick (WI-5.4) — a distinct soft tap so it reads as a clock cue,
+        /// not the `.escape` pop confirmation.
+        case tick
     }
 
     private static let lightImpact = UIImpactFeedbackGenerator(style: .light)
@@ -661,6 +664,9 @@ enum Haptics {
         case .finish:
             notification.notificationOccurred(.success)
             notification.prepare()
+        case .tick:
+            softImpact.impactOccurred(intensity: 0.4)
+            softImpact.prepare()
         }
     }
 }
@@ -736,6 +742,9 @@ final class SoundEffects {
                 Tone(frequency: 659, duration: 0.08, amplitude: 0.07, delay: 0.075),
                 Tone(frequency: 784, duration: 0.11, amplitude: 0.06, delay: 0.15)
             ]
+        case .tick:
+            // The low-time tick is a haptic-only cue; no sound so it never machine-guns audio.
+            return []
         }
     }
 

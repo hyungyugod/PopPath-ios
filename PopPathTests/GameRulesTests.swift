@@ -239,7 +239,8 @@ final class GameRulesTests: XCTestCase {
         try? await Task.sleep(nanoseconds: 420_000_000)
 
         XCTAssertTrue(GameRules.openPositions(in: model.board).contains(BoardPosition(row: 3, column: 2)))
-        XCTAssertEqual(model.score, 17)
+        // WI-5.1: pop (chain 1) = 10; unlock = 1 path * 14 * chain 1 = 14; total 24.
+        XCTAssertEqual(model.score, 24)
         XCTAssertEqual(model.boardToast?.style, .unlock)
     }
 
@@ -332,12 +333,14 @@ final class GameRulesTests: XCTestCase {
         model.swipe(row: 4, column: 0, hapticsEnabled: false)
         model.finishRound(hapticsEnabled: false, soundEnabled: false)
 
-        XCTAssertEqual(model.dailyBest, 250)
-        XCTAssertEqual(model.roundSummary?.dailyBest, 250)
+        // WI-5.1: pops 10 + 20 = 30; board emptied at chain 2 → clear bonus 200 + 2*22 = 244;
+        // total 274.
+        XCTAssertEqual(model.dailyBest, 274)
+        XCTAssertEqual(model.roundSummary?.dailyBest, 274)
         XCTAssertEqual(model.roundSummary?.mode, .daily)
         XCTAssertEqual(
             UserDefaults.standard.integer(forKey: GameModel.dailyBestStorageKey(for: challenge.id)),
-            250
+            274
         )
     }
 
@@ -355,7 +358,8 @@ final class GameRulesTests: XCTestCase {
 
         XCTAssertEqual(model.stats.roundsPlayed, 1)
         XCTAssertEqual(model.stats.totalPops, 2)
-        XCTAssertEqual(model.stats.bestScore, 250)
+        // WI-5.1: pops 10 + 20 = 30; board clear at chain 2 = 200 + 2*22 = 244; total 274.
+        XCTAssertEqual(model.stats.bestScore, 274)
         XCTAssertTrue(model.stats.unlockedAchievementIDs.contains("first_run"))
         XCTAssertEqual(GameModel.loadStats(), model.stats)
         XCTAssertEqual(model.roundSummary?.unlockedAchievements.map(\.id), ["first_run"])
@@ -713,6 +717,99 @@ final class GameRulesTests: XCTestCase {
         XCTAssertGreaterThan(model.boardGeneration, generationBeforeDeal, "Board should have been dealt")
         XCTAssertFalse(model.queuedEventKinds.contains(.freshPath))
         XCTAssertNotEqual(model.boardToast?.style, .freshPath)
+    }
+
+    // MARK: - Sprint 5A: scoring economy, feedback timing, chain decay
+
+    @MainActor
+    func testLongChainPerPopScoreIsCapped() {
+        let model = GameModel(makeInitialBoard: false)
+        var board = GameRules.emptyBoard()
+        // Eight mutually-independent escapable blocks: six pointing up along the top row, two
+        // pointing down along the bottom row. Popping seven builds chain 1...7 with no
+        // misses, no unlocks, and no board clear (one block always remains).
+        for column in 0..<6 {
+            board[0][column] = PopBlock(direction: .up, tone: .mistBlue)
+        }
+        board[6][0] = PopBlock(direction: .down, tone: .lavenderMist)
+        board[6][1] = PopBlock(direction: .down, tone: .lavenderMist)
+
+        model.loadBoardForTesting(board)
+        for column in 0..<6 {
+            model.swipe(row: 0, column: column, hapticsEnabled: false)
+        }
+        model.swipe(row: 6, column: 0, hapticsEnabled: false)
+
+        XCTAssertEqual(model.chain, 7)
+        // chains 1...6 = 10+20+30+40+50+60 = 210; chain 7 is capped at 6 (60) plus one
+        // continuation step (4) = 64; total 274 (an uncapped run would score 280).
+        XCTAssertEqual(model.score, 274)
+    }
+
+    @MainActor
+    func testBoardClearBonusAddsBaseAndChainScaledReward() {
+        let model = GameModel(makeInitialBoard: false)
+        var board = GameRules.emptyBoard()
+        board[0][0] = PopBlock(direction: .up, tone: .mistBlue)
+
+        model.loadBoardForTesting(board)
+        model.swipe(row: 0, column: 0, hapticsEnabled: false)
+
+        // Pop (chain 1) = 10; board emptied → clear bonus 200 + 1*22 = 222; total 232.
+        // Asserted synchronously, before the async next-board deal (which adds no score).
+        XCTAssertEqual(model.score, 232)
+    }
+
+    @MainActor
+    func testPerPopFloatingScoreEmitted() {
+        let model = GameModel(makeInitialBoard: false)
+        var board = GameRules.emptyBoard()
+        board[3][5] = PopBlock(direction: .right, tone: .mistBlue)
+        board[0][0] = PopBlock(direction: .up, tone: .mistBlue)
+
+        model.loadBoardForTesting(board)
+        model.swipe(row: 3, column: 5, hapticsEnabled: false)
+
+        XCTAssertEqual(model.floatingScores.count, 1)
+        let marker = model.floatingScores.first
+        XCTAssertEqual(marker?.amount, 10)
+        XCTAssertEqual(marker?.row, 3)
+        XCTAssertEqual(marker?.column, 5)
+    }
+
+    @MainActor
+    func testChainDecayFractionDepletesOverWindow() {
+        let fixedNow = Date(timeIntervalSinceReferenceDate: 3_000)
+        let model = GameModel(makeInitialBoard: false, now: { fixedNow })
+        var board = GameRules.emptyBoard()
+        board[3][5] = PopBlock(direction: .right, tone: .mistBlue)
+        board[0][0] = PopBlock(direction: .up, tone: .mistBlue)
+
+        model.loadBoardForTesting(board)
+        model.swipe(row: 3, column: 5, hapticsEnabled: false)
+
+        // Right after the pop the decay window is essentially full…
+        XCTAssertEqual(model.chainDecayFraction(at: fixedNow), 1, accuracy: 0.001)
+        // …and fully depleted once the window (well under 3s for chain 1) has elapsed.
+        XCTAssertEqual(model.chainDecayFraction(at: fixedNow.addingTimeInterval(3)), 0, accuracy: 0.001)
+    }
+
+    @MainActor
+    func testPauseFreezesChainDecay() {
+        let fakeNow = Date(timeIntervalSinceReferenceDate: 4_000)
+        let model = GameModel(makeInitialBoard: false, now: { fakeNow })
+        var board = GameRules.emptyBoard()
+        board[3][5] = PopBlock(direction: .right, tone: .mistBlue)
+        board[0][0] = PopBlock(direction: .up, tone: .mistBlue)
+
+        model.loadBoardForTesting(board)
+        model.swipe(row: 3, column: 5, hapticsEnabled: false)
+        XCTAssertEqual(model.chainDecayFraction(at: fakeNow), 1, accuracy: 0.001)
+
+        model.pause()
+        // While paused the indicator freezes: sampling a much later time still reads full.
+        XCTAssertEqual(model.chainDecayFraction(at: fakeNow.addingTimeInterval(100)), 1, accuracy: 0.001)
+        XCTAssertEqual(model.chain, 1)
     }
 
     private func dayDate(_ year: Int, _ month: Int, _ day: Int) -> Date {
