@@ -554,9 +554,10 @@ private struct BoardCell: View {
     let block: PopBlock?
     let isOpen: Bool
     let isPressed: Bool
+    /// Emphasis for the open cue (the Open-Path Highlight setting). The cue is drawn on
+    /// every open cell regardless; this only brightens/pulses it.
     let showOpenHint: Bool
     let reduceMotion: Bool
-    @State private var pulse = false
 
     var body: some View {
         ZStack {
@@ -570,15 +571,6 @@ private struct BoardCell: View {
         .aspectRatio(1, contentMode: .fit)
         .scaleEffect(pressScale)
         .animation(reduceMotion ? nil : .spring(response: 0.2, dampingFraction: 0.62), value: isPressed)
-        .onAppear {
-            updatePulse()
-        }
-        .onChange(of: isOpen) { _, _ in
-            updatePulse()
-        }
-        .onChange(of: showOpenHint) { _, _ in
-            updatePulse()
-        }
     }
 
     private func blockView(_ block: PopBlock) -> some View {
@@ -592,30 +584,16 @@ private struct BoardCell: View {
                         .frame(height: 1)
                         .padding(.horizontal, 10)
                 }
+                .overlay {
+                    BlockToneMotif(tone: block.tone)
+                }
 
             Image(systemName: block.direction.symbolName)
                 .font(.system(size: 18, weight: .bold, design: .rounded))
                 .symbolRenderingMode(.monochrome)
                 .foregroundStyle(Color.ppInkGray)
-
-            if showOpenHint && isOpen {
-                Circle()
-                    .fill(Color.ppMintButtonText)
-                    .frame(width: 6, height: 6)
-                    .offset(x: 14, y: -14)
-            }
-
         }
-        .overlay {
-            if showOpenHint && isOpen {
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .stroke(
-                        Color.ppFreshMint.opacity(pulse && !reduceMotion ? 0.4 : 0.95),
-                        lineWidth: pulse && !reduceMotion ? 7 : 3
-                    )
-                    .shadow(color: Color.ppMintText.opacity(0.22), radius: 12, x: 0, y: 5)
-            }
-        }
+        .openPathCue(isOpen: isOpen, emphasized: showOpenHint, reduceMotion: reduceMotion, cornerRadius: 12)
         .overlay {
             if block.isMiss {
                 RoundedRectangle(cornerRadius: 12, style: .continuous)
@@ -624,23 +602,12 @@ private struct BoardCell: View {
         }
         .modifier(ShakeEffect(shakes: block.isMiss ? 2 : 0))
         .animation(.linear(duration: 0.18), value: block.isMiss)
-        .animation(reduceMotion ? nil : .easeInOut(duration: 1.05).repeatForever(autoreverses: true), value: pulse)
         .accessibilityLabel(accessibilityLabel(for: block))
     }
 
     private var pressScale: CGFloat {
         guard isPressed, block != nil, !reduceMotion else { return 1 }
         return 0.94
-    }
-
-    private func updatePulse() {
-        // The pulsing highlight is only drawn when the colour-assist hint is on, so
-        // don't run a forever-repeating animation on every open cell otherwise.
-        guard isOpen, showOpenHint, !reduceMotion else {
-            pulse = false
-            return
-        }
-        pulse = true
     }
 
     private func accessibilityLabel(for block: PopBlock) -> String {

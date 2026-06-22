@@ -24,7 +24,10 @@ struct RootView: View {
     @AppStorage("hasSeenTutorial") private var hasSeenTutorial = false
     @AppStorage("soundEnabled") private var soundEnabled = true
     @AppStorage("hapticsEnabled") private var hapticsEnabled = true
-    @AppStorage("colorAssist") private var colorAssist = false
+    // Defaults on so a fresh install distinguishes open from blocked out of the box; the
+    // open cue itself is now always drawn, so this only controls the brighter pulse. The
+    // storage key is unchanged, so anyone who turned it off keeps their choice.
+    @AppStorage("colorAssist") private var colorAssist = true
     @AppStorage("reduceMotion") private var reduceMotion = false
     @AppStorage("appLanguage") private var appLanguageRaw = AppLanguage.english.rawValue
     #if DEBUG

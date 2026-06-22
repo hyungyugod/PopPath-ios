@@ -306,3 +306,124 @@ struct ArrowGlyph: View {
         }
     }
 }
+
+/// The "this path is open" affordance — a mint outline plus a dark corner pip — drawn on
+/// every escapable block *by default* (so open vs. blocked is legible without the setting),
+/// and brightened with a slow pulse when `emphasized` (the Open-Path Highlight setting) is
+/// on. One definition shared by the live board and the tutorial so the two can't drift. The
+/// cue reads as a shape + brightness change, not a hue, so it survives grayscale.
+struct OpenPathCue: ViewModifier {
+    let isOpen: Bool
+    let emphasized: Bool
+    let reduceMotion: Bool
+    var cornerRadius: CGFloat = 12
+
+    @State private var pulse = false
+
+    func body(content: Content) -> some View {
+        content
+            .overlay {
+                if isOpen {
+                    RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                        .stroke(strokeColor, lineWidth: strokeWidth)
+                        .shadow(
+                            color: Color.ppMintText.opacity(emphasized ? 0.22 : 0.12),
+                            radius: emphasized ? 12 : 6,
+                            x: 0,
+                            y: emphasized ? 5 : 3
+                        )
+                }
+            }
+            .overlay(alignment: .topTrailing) {
+                if isOpen {
+                    Circle()
+                        .fill(Color.ppMintButtonText)
+                        .frame(width: 7, height: 7)
+                        .opacity(emphasized ? 1 : 0.9)
+                        .padding(6)
+                }
+            }
+            .onAppear { syncPulse() }
+            .onChange(of: isOpen) { _, _ in syncPulse() }
+            .onChange(of: emphasized) { _, _ in syncPulse() }
+            .onChange(of: reduceMotion) { _, _ in syncPulse() }
+            .animation(
+                reduceMotion ? nil : .easeInOut(duration: 1.05).repeatForever(autoreverses: true),
+                value: pulse
+            )
+    }
+
+    // When emphasized, `pulse` oscillates the stroke between resting and bright via the
+    // repeating animation above; when not, the cue rests at a subtle always-on outline.
+    private var strokeColor: Color {
+        guard isOpen else { return .clear }
+        if emphasized {
+            return Color.ppFreshMint.opacity(pulse && !reduceMotion ? 0.45 : 0.95)
+        }
+        return Color.ppFreshMint.opacity(0.55)
+    }
+
+    private var strokeWidth: CGFloat {
+        guard isOpen else { return 0 }
+        if emphasized {
+            return pulse && !reduceMotion ? 7 : 3
+        }
+        return 2
+    }
+
+    private func syncPulse() {
+        guard isOpen, emphasized, !reduceMotion else {
+            pulse = false
+            return
+        }
+        pulse = true
+    }
+}
+
+extension View {
+    func openPathCue(
+        isOpen: Bool,
+        emphasized: Bool,
+        reduceMotion: Bool,
+        cornerRadius: CGFloat = 12
+    ) -> some View {
+        modifier(
+            OpenPathCue(
+                isOpen: isOpen,
+                emphasized: emphasized,
+                reduceMotion: reduceMotion,
+                cornerRadius: cornerRadius
+            )
+        )
+    }
+}
+
+/// A faint, per-tone shape in the block's corner. The two block tones are purely decorative
+/// (assigned by board parity), but a colorblind player can't tell them apart by hue — this
+/// gives each a distinct grayscale-legible motif so the board reads as varied, not as a flat
+/// mass, without ever implying the tone carries state. Kept subordinate to the arrow glyph.
+struct BlockToneMotif: View {
+    let tone: BlockTone
+
+    var body: some View {
+        motif
+            .foregroundStyle(Color.ppInkGray.opacity(0.11))
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
+            .padding(8)
+            .allowsHitTesting(false)
+    }
+
+    @ViewBuilder
+    private var motif: some View {
+        switch tone {
+        case .mistBlue:
+            Circle()
+                .stroke(lineWidth: 1.5)
+                .frame(width: 7, height: 7)
+        case .lavenderMist:
+            RoundedRectangle(cornerRadius: 1, style: .continuous)
+                .frame(width: 6, height: 6)
+                .rotationEffect(.degrees(45))
+        }
+    }
+}

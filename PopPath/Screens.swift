@@ -687,6 +687,8 @@ struct TutorialView: View {
         }
         .ppScreenPadding()
         .onAppear {
+            // Drives the pointing-hand bob. The open-path highlight pulses itself inside
+            // the shared OpenPathCue modifier.
             guard !reduceMotion else { return }
             withAnimation(.easeInOut(duration: 1.1).repeatForever(autoreverses: true)) {
                 pulse = true
@@ -726,15 +728,12 @@ struct TutorialView: View {
         if let arrow {
             ZStack(alignment: .bottomTrailing) {
                 MiniCell(arrow, color: color, foreground: foreground)
-                    .overlay {
-                        if index == highlightedIndex {
-                            RoundedRectangle(cornerRadius: 13, style: .continuous)
-                                .stroke(
-                                    Color.ppFreshMint.opacity(pulse && !reduceMotion ? 0.42 : 0.95),
-                                    lineWidth: pulse && !reduceMotion ? 7 : 3
-                                )
-                        }
-                    }
+                    .openPathCue(
+                        isOpen: index == highlightedIndex,
+                        emphasized: true,
+                        reduceMotion: reduceMotion,
+                        cornerRadius: 13
+                    )
 
                 if index == highlightedIndex {
                     Image(systemName: "hand.draw.fill")
@@ -890,8 +889,8 @@ struct SettingsView: View {
                     isOn: $hapticsEnabled
                 )
                 SettingRow(
-                    title: appLanguage.text("Color Assist", "색상 보조"),
-                    subtitle: appLanguage.text("Show open-path outlines", "열린 길을 테두리로 표시해요"),
+                    title: appLanguage.text("Open-Path Highlight", "열린 길 강조"),
+                    subtitle: appLanguage.text("Brighten and pulse open paths", "열린 길을 더 밝게 강조해요"),
                     isOn: $colorAssist
                 )
                 SettingRow(
