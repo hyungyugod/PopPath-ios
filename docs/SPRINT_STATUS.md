@@ -93,6 +93,16 @@ Status: Complete
 - Toggle traits (WI-5.6) on settings switches; AA contrast for secondary text (WI-5.7, darkened warm gray); and ≥44pt tap targets for the home/pause, back, language, and toggle controls (WI-5.7).
 - Added a localized-announcement test; adversarial review pass closed four Dynamic Type overflow regressions (global cap, scrollable Settings, shrinkable fixed-tile labels).
 
+## Sprint 6: Onboarding & tutorial truth
+
+Status: Complete
+
+- Rewrote the tutorial to teach the real rules (WI-6.1): the arrow-matching flick, the runway-to-edge escapability rule, clearing in order to open lanes, and chaining. Steps live in a testable `TutorialContent`.
+- Made the tutorial gesture-gated (WI-6.1): only a flick matching the highlighted cell's arrow (resolved by the same `Direction.swipeDirection` the live board uses) advances; a wrong flick shows a hint; a Next/Start fallback button appears after a couple of tries; a Skip link and a VoiceOver activate action are always available.
+- First-time Daily players are now routed through the tutorial before their Daily run instead of being silently opted out (WI-6.2, H3).
+- Added a replayable "How to play" entry in Settings that returns to Settings when finished, reachable regardless of `hasSeenTutorial` (WI-6.2, H5).
+- Added tests for the taught copy (arrow + edge) and that each step's required flick matches its displayed arrow.
+
 ## Remaining Owner-Side Release Inputs
 
 - Apple Developer Team/signing account for device archive and App Store upload.

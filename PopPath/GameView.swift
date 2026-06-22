@@ -615,17 +615,9 @@ private struct BoardView: View {
     }
 
     private func resolvedSwipeDirection(_ value: DragGesture.Value) -> Direction? {
-        if let direction = Direction.swipeDirection(
-            for: value.translation,
-            minimumDistance: 14,
-            axisBias: 1.16
-        ) {
-            return direction
-        }
-        return Direction.swipeDirection(
-            for: value.predictedEndTranslation,
-            minimumDistance: 30,
-            axisBias: 1.08
+        Direction.resolveFlick(
+            translation: value.translation,
+            predictedEndTranslation: value.predictedEndTranslation
         )
     }
 }
@@ -1084,23 +1076,6 @@ private extension Direction {
             return CGSize(width: -1, height: 0)
         case .right:
             return CGSize(width: 1, height: 0)
-        }
-    }
-
-    var accessibilityName: String {
-        accessibilityName(language: .english)
-    }
-
-    func accessibilityName(language: AppLanguage) -> String {
-        switch self {
-        case .up:
-            return language.text("Up", "위쪽")
-        case .down:
-            return language.text("Down", "아래쪽")
-        case .left:
-            return language.text("Left", "왼쪽")
-        case .right:
-            return language.text("Right", "오른쪽")
         }
     }
 

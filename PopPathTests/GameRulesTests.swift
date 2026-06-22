@@ -827,6 +827,57 @@ final class GameRulesTests: XCTestCase {
         XCTAssertFalse(korean.contains("BOARD CLEAR"))
     }
 
+    // MARK: - Sprint 6: tutorial truth
+
+    func testTutorialTeachesArrowMatchAndRunway() {
+        let steps = TutorialContent.steps
+        XCTAssertGreaterThanOrEqual(steps.count, 3, "Tutorial should teach arrow-match, runway, and chaining")
+
+        // Step 1 teaches the arrow-matching flick (H1).
+        let first = steps[0]
+        XCTAssertTrue(
+            (first.titleEN + " " + first.subtitleEN).lowercased().contains("arrow"),
+            "First step must teach the arrow-matching flick"
+        )
+
+        // Some step teaches the escapability runway-to-edge rule (H2).
+        XCTAssertTrue(
+            steps.contains { $0.subtitleEN.lowercased().contains("edge") },
+            "A step must teach that a block needs a clear lane to the edge"
+        )
+    }
+
+    func testResolveFlickAcceptsQuickFlickViaPredictedEnd() {
+        // A short actual translation (below the strict 14pt) but a far predicted end still
+        // resolves — the lenient tier the live board and the tutorial now share.
+        XCTAssertEqual(
+            Direction.resolveFlick(
+                translation: CGSize(width: 8, height: 1),
+                predictedEndTranslation: CGSize(width: 44, height: 2)
+            ),
+            .right
+        )
+        // A decisive in-threshold translation resolves on the strict tier.
+        XCTAssertEqual(
+            Direction.resolveFlick(
+                translation: CGSize(width: 2, height: -30),
+                predictedEndTranslation: CGSize(width: 2, height: -30)
+            ),
+            .up
+        )
+        // A pure tap resolves to nothing on both tiers.
+        XCTAssertNil(Direction.resolveFlick(translation: .zero, predictedEndTranslation: .zero))
+    }
+
+    func testTutorialExpectedDirectionsMatchDisplayedArrows() {
+        // The gesture gate requires a flick matching the highlighted cell's arrow, so each
+        // step's expectedDirection must agree with the arrow it shows.
+        let arrowDirection: [String: Direction] = ["▲": .up, "▼": .down, "◀": .left, "▶": .right]
+        for step in TutorialContent.steps {
+            XCTAssertEqual(arrowDirection[step.arrow], step.expectedDirection, "Arrow \(step.arrow) must match its taught flick")
+        }
+    }
+
     private func dayDate(_ year: Int, _ month: Int, _ day: Int) -> Date {
         var components = DateComponents()
         components.year = year

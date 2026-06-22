@@ -26,6 +26,20 @@ enum Direction: CaseIterable, Codable {
         }
     }
 
+    /// Localized cardinal name, used by VoiceOver labels and the tutorial's flick hint.
+    func accessibilityName(language: AppLanguage) -> String {
+        switch self {
+        case .up:
+            return language.text("Up", "위쪽")
+        case .down:
+            return language.text("Down", "아래쪽")
+        case .left:
+            return language.text("Left", "왼쪽")
+        case .right:
+            return language.text("Right", "오른쪽")
+        }
+    }
+
     /// Resolves a drag translation into a cardinal flick direction, or `nil` when the
     /// gesture is a tap / too diagonal to be decisive. Defined once here so every input
     /// surface (board gesture, tutorial gate, VoiceOver) judges flicks identically.
@@ -45,6 +59,17 @@ enum Direction: CaseIterable, Codable {
             return translation.height > 0 ? .down : .up
         }
         return nil
+    }
+
+    /// Two-tier flick resolution shared by every input surface (the live board and the
+    /// tutorial gate) so they accept exactly the same flicks: a strict pass on the actual
+    /// translation, then a lenient pass on the predicted end so a quick, decisive flick that
+    /// lifts early still registers.
+    static func resolveFlick(translation: CGSize, predictedEndTranslation: CGSize) -> Direction? {
+        if let direction = swipeDirection(for: translation, minimumDistance: 14, axisBias: 1.16) {
+            return direction
+        }
+        return swipeDirection(for: predictedEndTranslation, minimumDistance: 30, axisBias: 1.08)
     }
 }
 

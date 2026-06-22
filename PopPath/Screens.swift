@@ -641,14 +641,82 @@ private extension Achievement {
     }
 }
 
+/// One onboarding step: which mini-board cell is highlighted, the flick the player must
+/// perform to advance, and the EN/KO copy. File scope (not private) so the taught copy and the
+/// required gesture are unit-testable.
+struct TutorialStep: Equatable {
+    let highlightIndex: Int
+    let arrow: String
+    let expectedDirection: Direction
+    let titleEN: String
+    let titleKO: String
+    let subtitleEN: String
+    let subtitleKO: String
+}
+
+enum TutorialContent {
+    /// Each step teaches a true rule (post-R1 direction-true input): the arrow-matching flick
+    /// (H1), the runway-to-edge escapability rule (H2), clearing in order to open lanes, and
+    /// chaining. The highlighted cell's displayed arrow matches `expectedDirection`.
+    static let steps: [TutorialStep] = [
+        TutorialStep(
+            highlightIndex: 5,
+            arrow: "▶",
+            expectedDirection: .right,
+            titleEN: "Flick the way the arrow points",
+            titleKO: "화살표 방향으로 밀어요",
+            subtitleEN: "Only a flick that matches the arrow clears a block.",
+            subtitleKO: "화살표와 같은 방향으로 밀어야 사라져요"
+        ),
+        TutorialStep(
+            highlightIndex: 0,
+            arrow: "▲",
+            expectedDirection: .up,
+            titleEN: "Clear a lane to the edge",
+            titleKO: "가장자리까지 길을 비워요",
+            subtitleEN: "A block only pops if its arrow has a clear lane to the edge.",
+            subtitleKO: "화살표 앞이 가장자리까지 뚫려 있어야 터져요"
+        ),
+        TutorialStep(
+            highlightIndex: 2,
+            arrow: "▼",
+            expectedDirection: .down,
+            titleEN: "Open new lanes in order",
+            titleKO: "순서대로 새 길을 열어요",
+            subtitleEN: "Clearing one block can free others to pop next.",
+            subtitleKO: "한 블록을 치우면 다른 길이 열려요"
+        ),
+        TutorialStep(
+            highlightIndex: 7,
+            arrow: "▶",
+            expectedDirection: .right,
+            titleEN: "Chain flicks for a high score",
+            titleKO: "연속으로 밀어 점수를 올려요",
+            subtitleEN: "Keep flicking without a miss to build a chain.",
+            subtitleKO: "막히지 않고 이어 밀면 체인이 쌓여요"
+        )
+    ]
+}
+
 struct TutorialView: View {
     @Environment(\.appLanguage) private var language
 
     let reduceMotion: Bool
     let onComplete: () -> Void
+
     @State private var step = 0
     @State private var pulse = false
-    private let totalSteps = 3
+    @State private var tries = 0
+    @State private var wrongFlick = false
+
+    private let steps = TutorialContent.steps
+    private var totalSteps: Int { steps.count }
+    private var currentStep: Int { min(step, totalSteps - 1) }
+    private var config: TutorialStep { steps[currentStep] }
+    private var isLastStep: Bool { currentStep == totalSteps - 1 }
+    /// The flick is the taught path; the explicit button is the fallback that appears after a
+    /// couple of misses (and always on the final step) so nobody is ever stuck (H4).
+    private var showFallbackButton: Bool { tries >= 2 || isLastStep }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -658,7 +726,7 @@ struct TutorialView: View {
 
             // Wraps rather than clamping to one line so the taught copy stays legible at
             // larger Dynamic Type sizes (H6).
-            Text(title)
+            Text(localizedTitle)
                 .font(.ppDisplay(16, weight: .medium, language: language))
                 .foregroundStyle(Color.ppWarmCream)
                 .multilineTextAlignment(.center)
@@ -668,9 +736,9 @@ struct TutorialView: View {
                 .background(RoundedRectangle(cornerRadius: 22, style: .continuous).fill(Color.ppInkGray))
                 .shadow(color: Color.ppInkGray.opacity(0.2), radius: 20, x: 0, y: 10)
                 .padding(.horizontal, 12)
-                .padding(.top, 40)
+                .padding(.top, 34)
 
-            Text(subtitle)
+            Text(localizedSubtitle)
                 .font(.ppBody(13, weight: .medium, language: language))
                 .foregroundStyle(Color.ppWarmGray)
                 .multilineTextAlignment(.center)
@@ -678,21 +746,30 @@ struct TutorialView: View {
                 .padding(.horizontal, 12)
                 .padding(.top, 14)
 
+            Text(flickHint)
+                .font(.ppBody(12, weight: .heavy, language: language))
+                .foregroundStyle(wrongFlick ? Color.ppSoftCoral : Color.ppMintText)
+                .padding(.top, 10)
+
             Spacer()
 
-            PrimaryPopButton(primaryButtonTitle, systemImage: primaryButtonIcon, action: advanceTutorial)
-                .padding(.bottom, 18)
-
-            HStack(spacing: 6) {
-                ForEach(0..<totalSteps, id: \.self) { index in
-                    Capsule(style: .continuous)
-                        .fill(index <= currentStep ? Color.ppFreshMint : Color.ppInkGray.opacity(0.15))
-                        .frame(width: index == currentStep ? 22 : 6, height: 6)
-                }
+            if showFallbackButton {
+                PrimaryPopButton(primaryButtonTitle, systemImage: primaryButtonIcon, action: advance)
+                    .padding(.bottom, 12)
+                    .transition(.opacity)
             }
-            .padding(.bottom, 28)
+
+            Button(language.text("Skip", "건너뛰기"), action: onComplete)
+                .font(.ppDisplay(15, weight: .semibold, language: language))
+                .foregroundStyle(Color.ppWarmGray)
+                .padding(.bottom, 16)
+                .accessibilityHint(language.text("Skips the tutorial", "튜토리얼을 건너뛰어요"))
+
+            stepDots
+                .padding(.bottom, 24)
         }
         .ppScreenPadding()
+        .animation(.spring(response: 0.3, dampingFraction: 0.82), value: showFallbackButton)
         .onAppear {
             // Drives the pointing-hand bob. The open-path highlight pulses itself inside
             // the shared OpenPathCue modifier.
@@ -704,30 +781,39 @@ struct TutorialView: View {
     }
 
     private var miniBoard: some View {
-        Button(action: advanceTutorial) {
-            LazyVGrid(
-                columns: Array(repeating: GridItem(.fixed(52), spacing: 8), count: 4),
-                spacing: 8
-            ) {
-                tutorialCell(index: 0, arrow: "▲", color: .ppMistBlue)
-                tutorialCell(index: 1, arrow: nil, color: .ppMistBlue)
-                tutorialCell(index: 2, arrow: "▼", color: .ppLavenderMist)
-                tutorialCell(index: 3, arrow: "◀", color: .ppMistBlue)
-                tutorialCell(index: 4, arrow: nil, color: .ppMistBlue)
-                tutorialCell(index: 5, arrow: "▶", color: .ppFreshMint, foreground: .ppMintButtonText)
-                tutorialCell(index: 6, arrow: "▲", color: .ppLavenderMist)
-                tutorialCell(index: 7, arrow: "▶", color: .ppMistBlue)
-            }
-            .padding(11)
-            .background(
-                RoundedRectangle(cornerRadius: 22, style: .continuous)
-                    .fill(Color.ppSoftSage)
-                    .shadow(color: Color.ppMintText.opacity(0.1), radius: 8, x: 0, y: 2)
-            )
-            .contentShape(Rectangle())
+        LazyVGrid(
+            columns: Array(repeating: GridItem(.fixed(52), spacing: 8), count: 4),
+            spacing: 8
+        ) {
+            tutorialCell(index: 0, arrow: "▲", color: .ppMistBlue)
+            tutorialCell(index: 1, arrow: nil, color: .ppMistBlue)
+            tutorialCell(index: 2, arrow: "▼", color: .ppLavenderMist)
+            tutorialCell(index: 3, arrow: "◀", color: .ppMistBlue)
+            tutorialCell(index: 4, arrow: nil, color: .ppMistBlue)
+            tutorialCell(index: 5, arrow: "▶", color: .ppFreshMint, foreground: .ppMintButtonText)
+            tutorialCell(index: 6, arrow: "▲", color: .ppLavenderMist)
+            tutorialCell(index: 7, arrow: "▶", color: .ppMistBlue)
         }
-        .buttonStyle(.plain)
-        .accessibilityLabel(primaryButtonTitle)
+        .padding(11)
+        .background(
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                .fill(Color.ppSoftSage)
+                .shadow(color: Color.ppMintText.opacity(0.1), radius: 8, x: 0, y: 2)
+        )
+        .contentShape(Rectangle())
+        // The taught gesture: only a flick matching the highlighted arrow advances (H4). It
+        // uses the same resolver as the live board so the tutorial can't teach a different
+        // flick than the game accepts.
+        .gesture(
+            DragGesture(minimumDistance: 0)
+                .onEnded(handleFlick)
+        )
+        // VoiceOver users can't flick, so the board is also an activate-able element.
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(language.text("Practice board", "연습 보드"))
+        .accessibilityHint(flickHint)
+        .accessibilityAddTraits(.isButton)
+        .accessibilityAction { advance() }
     }
 
     @ViewBuilder
@@ -736,13 +822,13 @@ struct TutorialView: View {
             ZStack(alignment: .bottomTrailing) {
                 MiniCell(arrow, color: color, foreground: foreground)
                     .openPathCue(
-                        isOpen: index == highlightedIndex,
+                        isOpen: index == config.highlightIndex,
                         emphasized: true,
                         reduceMotion: reduceMotion,
                         cornerRadius: 13
                     )
 
-                if index == highlightedIndex {
+                if index == config.highlightIndex {
                     Image(systemName: "hand.draw.fill")
                         .font(.system(size: 26, weight: .semibold))
                         .foregroundStyle(Color.ppInkGray)
@@ -755,33 +841,56 @@ struct TutorialView: View {
         }
     }
 
-    private var currentStep: Int {
-        min(step, totalSteps - 1)
-    }
+    private func handleFlick(_ value: DragGesture.Value) {
+        guard let direction = Direction.resolveFlick(
+            translation: value.translation,
+            predictedEndTranslation: value.predictedEndTranslation
+        ) else {
+            return // a tap or too-diagonal drag: no-op, no penalty
+        }
 
-    private var highlightedIndex: Int {
-        [5, 2, 7][currentStep]
-    }
-
-    private var title: String {
-        switch currentStep {
-        case 0:
-            return language.text("Swipe with the arrow", "화살표 방향으로 스와이프")
-        case 1:
-            return language.text("Swipe clear paths to unlock more", "뚫린 길을 밀어내요")
-        default:
-            return language.text("Chain clean swipes for a high score", "연속 스와이프로 점수 쑥!")
+        if direction == config.expectedDirection {
+            advance()
+        } else {
+            tries += 1
+            withAnimation(.easeInOut(duration: 0.2)) { wrongFlick = true }
+            Task {
+                try? await Task.sleep(nanoseconds: 1_000_000_000)
+                withAnimation(.easeInOut(duration: 0.2)) { wrongFlick = false }
+            }
         }
     }
 
-    private var subtitle: String {
-        switch currentStep {
-        case 0:
-            return language.text("Only the arrow direction clears a block.", "화살표 방향으로 밀어야 사라져요")
-        case 1:
-            return language.text("A good order opens new swipe paths.", "순서를 잘 고르면 새 길이 생겨요")
-        default:
-            return language.text("Every clean swipe keeps the chain alive.", "막히지 않고 밀어내면 체인이 이어져요")
+    private func advance() {
+        wrongFlick = false
+        if isLastStep {
+            onComplete()
+        } else {
+            withAnimation(.spring(response: 0.32, dampingFraction: 0.8)) {
+                step += 1
+                tries = 0
+            }
+        }
+    }
+
+    private var localizedTitle: String { language.text(config.titleEN, config.titleKO) }
+    private var localizedSubtitle: String { language.text(config.subtitleEN, config.subtitleKO) }
+
+    private var flickHint: String {
+        let directionName = config.expectedDirection.accessibilityName(language: language)
+        if wrongFlick {
+            return language.text("Flick \(directionName) to clear it", "\(directionName) 방향으로 밀어요")
+        }
+        return language.text("Flick \(directionName)", "\(directionName)으로 밀어요")
+    }
+
+    private var stepDots: some View {
+        HStack(spacing: 6) {
+            ForEach(0..<totalSteps, id: \.self) { index in
+                Capsule(style: .continuous)
+                    .fill(index <= currentStep ? Color.ppFreshMint : Color.ppInkGray.opacity(0.15))
+                    .frame(width: index == currentStep ? 22 : 6, height: 6)
+            }
         }
     }
 
@@ -800,21 +909,11 @@ struct TutorialView: View {
     }
 
     private var primaryButtonTitle: String {
-        currentStep == totalSteps - 1 ? language.text("Start", "시작") : language.text("Next", "다음")
+        isLastStep ? language.text("Start", "시작") : language.text("Next", "다음")
     }
 
     private var primaryButtonIcon: String {
-        currentStep == totalSteps - 1 ? "play.fill" : "arrow.right"
-    }
-
-    private func advanceTutorial() {
-        if currentStep >= totalSteps - 1 {
-            onComplete()
-        } else {
-            withAnimation(.spring(response: 0.32, dampingFraction: 0.8)) {
-                step += 1
-            }
-        }
+        isLastStep ? "play.fill" : "arrow.right"
     }
 }
 
@@ -857,6 +956,7 @@ struct SettingsView: View {
     @Binding var colorAssist: Bool
     @Binding var reduceMotion: Bool
     @Binding var language: AppLanguage
+    let onHowToPlay: () -> Void
     let onBack: () -> Void
 
     var body: some View {
@@ -907,6 +1007,14 @@ struct SettingsView: View {
                         title: appLanguage.text("Reduce Motion", "움직임 줄이기"),
                         subtitle: appLanguage.text("Keep motion calm and minimal", "움직임을 차분하게 줄여요"),
                         isOn: $reduceMotion
+                    )
+
+                    // Replayable tutorial entry, reachable regardless of hasSeenTutorial (H5).
+                    SettingsLinkRow(
+                        title: appLanguage.text("How to play", "플레이 방법"),
+                        subtitle: appLanguage.text("Replay the tutorial", "튜토리얼 다시 보기"),
+                        systemImage: "questionmark.circle.fill",
+                        action: onHowToPlay
                     )
 
                     Text("PopPath! v0")
@@ -1037,5 +1145,53 @@ private struct SettingRow: View {
                 )
                 .shadow(color: Color.ppInkGray.opacity(0.08), radius: 14, x: 0, y: 7)
         )
+    }
+}
+
+/// A tappable settings row that performs a navigational action (e.g. replay the tutorial),
+/// styled to match `SettingRow`.
+private struct SettingsLinkRow: View {
+    let title: String
+    let subtitle: String
+    let systemImage: String
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 16) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(title)
+                        .font(.ppDisplay(17, weight: .semibold))
+                        .foregroundStyle(Color.ppInkGray)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Text(subtitle)
+                        .font(.ppBody(13, weight: .medium))
+                        .foregroundStyle(Color.ppWarmGray)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                Spacer(minLength: 12)
+
+                Image(systemName: systemImage)
+                    .font(.system(size: 20, weight: .semibold, design: .rounded))
+                    .foregroundStyle(Color.ppMintText)
+            }
+            .padding(.horizontal, 18)
+            .padding(.vertical, 16)
+            .frame(maxWidth: .infinity)
+            .background(
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .fill(Color.ppCardCream)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 18, style: .continuous)
+                            .stroke(Color.ppInkGray.opacity(0.06), lineWidth: 1)
+                    )
+                    .shadow(color: Color.ppInkGray.opacity(0.08), radius: 14, x: 0, y: 7)
+            )
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(title)
+        .accessibilityHint(subtitle)
     }
 }

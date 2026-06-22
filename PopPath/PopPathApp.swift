@@ -18,9 +18,17 @@ private enum AppRoute {
     case settings
 }
 
+/// What finishing (or skipping) the tutorial should do: start a first run of the chosen mode,
+/// or return to the screen the player launched the replay from (WI-6.2).
+private enum TutorialContext {
+    case play(GameMode)
+    case returnTo(AppRoute)
+}
+
 struct RootView: View {
     @StateObject private var game = GameModel()
     @State private var route: AppRoute = .home
+    @State private var tutorialContext: TutorialContext = .play(.classic)
     @Environment(\.scenePhase) private var scenePhase
     @AppStorage("hasSeenTutorial") private var hasSeenTutorial = false
     @AppStorage("soundEnabled") private var soundEnabled = true
@@ -89,14 +97,17 @@ struct RootView: View {
                     if hasSeenTutorial {
                         startGame()
                     } else {
-                        withAnimation(.spring(response: 0.38, dampingFraction: 0.86)) {
-                            route = .tutorial
-                        }
+                        presentTutorial(context: .play(.classic))
                     }
                 },
                 onDaily: {
-                    hasSeenTutorial = true
-                    startGame(mode: .daily)
+                    // First-time Daily players are taught first instead of being silently
+                    // opted out of onboarding (H3); the tutorial then starts the Daily run.
+                    if hasSeenTutorial {
+                        startGame(mode: .daily)
+                    } else {
+                        presentTutorial(context: .play(.daily))
+                    }
                 },
                 onSettings: {
                     withAnimation(.spring(response: 0.38, dampingFraction: 0.86)) {
@@ -113,10 +124,7 @@ struct RootView: View {
         case .tutorial:
             TutorialView(
                 reduceMotion: effectiveReduceMotion,
-                onComplete: {
-                    hasSeenTutorial = true
-                    startGame()
-                }
+                onComplete: completeTutorial
             )
         case .game:
             GameView(
@@ -159,6 +167,7 @@ struct RootView: View {
                 colorAssist: $colorAssist,
                 reduceMotion: $reduceMotion,
                 language: appLanguageBinding,
+                onHowToPlay: { presentTutorial(context: .returnTo(.settings)) },
                 onBack: {
                     withAnimation(.spring(response: 0.38, dampingFraction: 0.86)) {
                         route = .home
@@ -195,6 +204,27 @@ struct RootView: View {
         game.newRound(mode: mode)
         withAnimation(.spring(response: 0.38, dampingFraction: 0.86)) {
             route = .game
+        }
+    }
+
+    private func presentTutorial(context: TutorialContext) {
+        tutorialContext = context
+        withAnimation(.spring(response: 0.38, dampingFraction: 0.86)) {
+            route = .tutorial
+        }
+    }
+
+    /// Completing or skipping the tutorial marks it seen, then either starts the intended
+    /// first run or returns to the screen the replay was launched from (WI-6.2).
+    private func completeTutorial() {
+        hasSeenTutorial = true
+        switch tutorialContext {
+        case .play(let mode):
+            startGame(mode: mode)
+        case .returnTo(let destination):
+            withAnimation(.spring(response: 0.38, dampingFraction: 0.86)) {
+                route = destination
+            }
         }
     }
 
