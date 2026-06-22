@@ -173,6 +173,9 @@ final class GameRulesTests: XCTestCase {
         board[3][5] = PopBlock(direction: .right, tone: .mistBlue)
         board[2][1] = PopBlock(direction: .right, tone: .mistBlue)
         board[2][4] = PopBlock(direction: .left, tone: .lavenderMist)
+        // Keep an open cell after the first pop so the board doesn't go stuck (which would
+        // pay a stranded-block consolation and muddy the score assertion).
+        board[0][0] = PopBlock(direction: .up, tone: .mistBlue)
 
         model.loadBoardForTesting(board)
         model.swipe(row: 3, column: 5, hapticsEnabled: false)
@@ -624,6 +627,92 @@ final class GameRulesTests: XCTestCase {
             210,
             "A pending board refresh must not block a later board clear from awarding its bonus"
         )
+    }
+
+    // MARK: - Sprint 4: fair, smooth difficulty
+
+    @MainActor
+    func testFreshPathDoesNotRaiseDifficulty() {
+        let fixedNow = Date(timeIntervalSinceReferenceDate: 0)
+
+        // A legit board clear raises difficulty…
+        let clearer = GameModel(makeInitialBoard: false, now: { fixedNow })
+        var clearBoard = GameRules.emptyBoard()
+        clearBoard[0][0] = PopBlock(direction: .up, tone: .mistBlue)
+        clearer.loadBoardForTesting(clearBoard)
+        let clearerBefore = clearer.currentDifficultyLevel
+        clearer.swipe(row: 0, column: 0, hapticsEnabled: false)
+        XCTAssertGreaterThan(clearer.currentDifficultyLevel, clearerBefore, "A legit board clear raises difficulty")
+
+        // …but getting stuck (a fresh-path deal) must not.
+        let stuck = GameModel(makeInitialBoard: false, now: { fixedNow })
+        var stuckBoard = GameRules.emptyBoard()
+        stuckBoard[0][0] = PopBlock(direction: .up, tone: .mistBlue)
+        stuckBoard[3][2] = PopBlock(direction: .right, tone: .mistBlue)
+        stuckBoard[3][5] = PopBlock(direction: .left, tone: .lavenderMist)
+        stuck.loadBoardForTesting(stuckBoard)
+        let stuckBefore = stuck.currentDifficultyLevel
+        stuck.swipe(row: 0, column: 0, hapticsEnabled: false)
+        XCTAssertEqual(stuck.currentDifficultyLevel, stuckBefore, "Getting stuck must not raise difficulty")
+    }
+
+    func testLevel4HasHumaneOpenFloor() {
+        XCTAssertGreaterThanOrEqual(
+            BoardGenerationProfile.difficulty(level: 4).minimumOpenCells,
+            4,
+            "The hardest boards must still leave the player real choices"
+        )
+    }
+
+    @MainActor
+    func testFreshPathAwardsStrandedBonus() {
+        let model = GameModel(makeInitialBoard: false)
+        var board = GameRules.emptyBoard()
+        board[0][0] = PopBlock(direction: .up, tone: .mistBlue)
+        board[3][2] = PopBlock(direction: .right, tone: .mistBlue)
+        board[3][5] = PopBlock(direction: .left, tone: .lavenderMist)
+
+        model.loadBoardForTesting(board)
+        // Popping (0,0) leaves (3,2)/(3,5) blocking each other -> stuck -> fresh path.
+        model.swipe(row: 0, column: 0, hapticsEnabled: false)
+
+        // 10 (the pop) + 2 stranded blocks * 3 consolation each.
+        XCTAssertEqual(model.score, 16)
+        XCTAssertEqual(model.boardToast?.style, .freshPath)
+    }
+
+    @MainActor
+    func testFreshPathToastDoesNotLingerWhenQueuedBehindAnotherToast() async {
+        let model = GameModel(makeInitialBoard: false)
+        var board = GameRules.emptyBoard()
+        // Pop A (3,5) frees (3,2) -> shows an UNLOCK toast.
+        board[3][5] = PopBlock(direction: .right, tone: .mistBlue)
+        board[3][2] = PopBlock(direction: .right, tone: .lavenderMist)
+        // Two blocks that wall each other off, so Pop B (3,2) leaves the board stuck.
+        board[5][1] = PopBlock(direction: .right, tone: .mistBlue)
+        board[5][4] = PopBlock(direction: .left, tone: .lavenderMist)
+
+        model.loadBoardForTesting(board)
+        model.swipe(row: 3, column: 5, hapticsEnabled: false)
+        XCTAssertEqual(model.boardToast?.style, .unlock)
+        let generationBeforeDeal = model.boardGeneration
+        model.swipe(row: 3, column: 2, hapticsEnabled: false)
+        // The fresh-path event is queued behind the still-visible unlock toast.
+        XCTAssertTrue(model.queuedEventKinds.contains(.freshPath))
+
+        // Poll until the board has actually been dealt (boardGeneration bumps), rather than
+        // racing a fixed sleep against the off-main generation.
+        var waited: UInt64 = 0
+        while model.boardGeneration == generationBeforeDeal && waited < 2_000_000_000 {
+            try? await Task.sleep(nanoseconds: 50_000_000)
+            waited += 50_000_000
+        }
+
+        // The deal retires the stale fresh-path announcement, so it never surfaces for a
+        // board that has already been swapped out.
+        XCTAssertGreaterThan(model.boardGeneration, generationBeforeDeal, "Board should have been dealt")
+        XCTAssertFalse(model.queuedEventKinds.contains(.freshPath))
+        XCTAssertNotEqual(model.boardToast?.style, .freshPath)
     }
 
     private func dayDate(_ year: Int, _ month: Int, _ day: Int) -> Date {

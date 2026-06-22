@@ -94,7 +94,6 @@ struct EscapingBlock: Identifiable, Equatable {
 }
 
 struct BoardGenerationProfile: Equatable {
-    var emptyChance: Double
     var minimumOpenCells: Int
     var maximumOpenCells: Int
     var minimumFilledCells: Int
@@ -102,7 +101,6 @@ struct BoardGenerationProfile: Equatable {
     var maxAttempts: Int
 
     static let standard = BoardGenerationProfile(
-        emptyChance: 0.24,
         minimumOpenCells: 4,
         maximumOpenCells: 11,
         minimumFilledCells: 30,
@@ -116,7 +114,6 @@ struct BoardGenerationProfile: Equatable {
             return .standard
         case 1:
             return BoardGenerationProfile(
-                emptyChance: 0.22,
                 minimumOpenCells: 4,
                 maximumOpenCells: 10,
                 minimumFilledCells: 31,
@@ -125,7 +122,6 @@ struct BoardGenerationProfile: Equatable {
             )
         case 2:
             return BoardGenerationProfile(
-                emptyChance: 0.2,
                 minimumOpenCells: 3,
                 maximumOpenCells: 9,
                 minimumFilledCells: 32,
@@ -134,7 +130,6 @@ struct BoardGenerationProfile: Equatable {
             )
         case 3:
             return BoardGenerationProfile(
-                emptyChance: 0.18,
                 minimumOpenCells: 3,
                 maximumOpenCells: 8,
                 minimumFilledCells: 33,
@@ -142,9 +137,10 @@ struct BoardGenerationProfile: Equatable {
                 maxAttempts: 160
             )
         default:
+            // Level 4: humane open-cell floor of 4 (was 2) so the hardest boards still
+            // give the player real choices (D3).
             return BoardGenerationProfile(
-                emptyChance: 0.16,
-                minimumOpenCells: 2,
+                minimumOpenCells: 4,
                 maximumOpenCells: 7,
                 minimumFilledCells: 34,
                 maximumFilledCells: 40,
@@ -258,7 +254,6 @@ enum GameRules {
     static let rows = 7
     static let columns = 6
     static let roundSeconds = 60
-    static let emptyChance = BoardGenerationProfile.standard.emptyChance
 
     static func emptyBoard() -> [[PopBlock?]] {
         Array(
@@ -385,24 +380,6 @@ enum GameRules {
             .joined(separator: "")
         }
         .joined(separator: "|")
-    }
-
-    private static func randomBoard<R: RandomNumberGenerator>(
-        using random: inout R,
-        emptyChance: Double
-    ) -> [[PopBlock?]] {
-        (0..<rows).map { row in
-            (0..<columns).map { column in
-                guard Double.random(in: 0..<1, using: &random) >= emptyChance else {
-                    return nil
-                }
-
-                return PopBlock(
-                    direction: Direction.allCases.randomElement(using: &random) ?? .right,
-                    tone: (row + column).isMultiple(of: 2) ? .mistBlue : .lavenderMist
-                )
-            }
-        }
     }
 
     private static func clearableRandomBoard<R: RandomNumberGenerator>(

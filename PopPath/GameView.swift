@@ -24,6 +24,7 @@ struct GameView: View {
                 openPositions: game.openPositions,
                 escapingBlocks: game.escapingBlocks,
                 boardToast: game.boardToast,
+                boardGeneration: game.boardGeneration,
                 colorAssist: colorAssist,
                 reduceMotion: reduceMotion,
                 onFlick: { row, column, direction in
@@ -326,6 +327,7 @@ private struct BoardView: View {
     let openPositions: Set<BoardPosition>
     let escapingBlocks: [EscapingBlock]
     let boardToast: BoardToast?
+    let boardGeneration: Int
     let colorAssist: Bool
     let reduceMotion: Bool
     let onFlick: (Int, Int, Direction) -> Void
@@ -364,6 +366,10 @@ private struct BoardView: View {
                             )
                         }
                     }
+                    // A board swap (deal / reshuffle) cross-fades the grid; per-pop changes
+                    // keep the same identity and animate per-cell as before.
+                    .id(boardGeneration)
+                    .transition(.opacity)
 
                     ForEach(escapingBlocks) { escapingBlock in
                         EscapingBlockView(
@@ -381,6 +387,7 @@ private struct BoardView: View {
                 .coordinateSpace(name: Self.boardCoordinateSpace)
                 .contentShape(Rectangle())
                 .gesture(boardGesture(cellSize: cellSize))
+                .animation(reduceMotion ? nil : .easeInOut(duration: 0.16), value: boardGeneration)
                 .padding(boardPadding)
                 .frame(width: width)
                 .background(

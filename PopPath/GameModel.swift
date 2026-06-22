@@ -283,6 +283,9 @@ final class GameModel: ObservableObject {
     /// True while a board is being (re)dealt. Gates input so a stray flick during the
     /// async deal window can never pop into a half-replaced board.
     @Published private(set) var isDealing = false
+    /// Bumps on every board swap (deal / reshuffle / new round) so the view can cross-fade
+    /// the board container.
+    @Published private(set) var boardGeneration = 0
     @Published private(set) var stats: PlayerStats
     @Published private(set) var escapingBlocks: [EscapingBlock] = []
     @Published var roundSummary: RoundSummary?
@@ -307,6 +310,8 @@ final class GameModel: ObservableObject {
     private let now: () -> Date
     /// Seconds a miss shaves off the round deadline (E2).
     private let missTimePenalty: TimeInterval = 2
+    /// Consolation points per block stranded when the board gets stuck (D6).
+    private let strandedBlockReward = 3
 
     init(makeInitialBoard: Bool = true, now: @escaping () -> Date = { Date() }) {
         self.now = now
@@ -376,9 +381,11 @@ final class GameModel: ObservableObject {
         maxChain = 0
         roundMetrics = .zero
         escapingBlocks = []
-        board = makeBoard(for: mode)
+        // Clock first so the difficulty source of truth sees elapsed == 0 for the opener.
         roundClock = RoundClock(start: now(), duration: TimeInterval(GameRules.roundSeconds))
         time = GameRules.roundSeconds
+        board = makeBoard(for: mode)
+        boardGeneration += 1
         runState = .running
         isDealing = false
         boardToast = nil
@@ -411,6 +418,7 @@ final class GameModel: ObservableObject {
 
         let profile = BoardGenerationProfile.difficulty(level: currentDifficultyLevel)
         board = makeClassicBoard(profile: profile)
+        boardGeneration += 1
     }
 
     func pause() {
@@ -838,12 +846,31 @@ final class GameModel: ObservableObject {
         }
     }
 
-    private var currentDifficultyLevel: Int {
+    private let maxDifficultyLevel = 4
+
+    /// The current difficulty level (0...4) — the single source of truth used by board
+    /// generation, the Classic reshuffle, and (later) the live HUD pip.
+    var currentDifficultyLevel: Int {
         difficultyLevel(forDealIndex: boardDealIndex)
     }
 
+    /// Difficulty is monotonic and fair. Classic ramps on a smoothed function of legit
+    /// board clears plus elapsed round time (~one step / 12s) and never reads score nor
+    /// rises from getting stuck. Daily ramps purely on the deal index so the shared
+    /// challenge stays deterministic for everyone.
     private func difficultyLevel(forDealIndex index: Int) -> Int {
-        min(4, max(0, index + score / 500))
+        switch mode {
+        case .daily:
+            return min(maxDifficultyLevel, max(0, index))
+        case .classic:
+            let level = roundMetrics.boardClears + elapsedSeconds / 12
+            return min(maxDifficultyLevel, max(0, level))
+        }
+    }
+
+    private var elapsedSeconds: Int {
+        guard let roundClock else { return 0 }
+        return max(0, Int(roundClock.totalDuration) - roundClock.remainingSeconds(at: now()))
     }
 
     private func makeClassicBoard(profile: BoardGenerationProfile) -> [[PopBlock?]] {
@@ -876,14 +903,18 @@ final class GameModel: ObservableObject {
             scheduleBoardRefresh(reason: .clear)
         } else if openPositions.isEmpty {
             roundMetrics.freshPaths += 1
+            // Getting stuck isn't a punishment: pay a small consolation for the blocks left
+            // stranded on the board before dealing a fresh one (D6).
+            let strandedBonus = remainingBlocks * strandedBlockReward
+            score += strandedBonus
             queueFeedback(.freshPath, hapticsEnabled: feedbackHapticsEnabled, soundEnabled: feedbackSoundEnabled)
             enqueueEvent(
                 BoardEvent(
                     kind: .freshPath,
                     title: "FRESH PATH",
-                    detail: "NO MOVES",
+                    detail: "+\(strandedBonus)",
                     style: .freshPath,
-                    announce: "Fresh path. No moves left.",
+                    announce: "Fresh path. Plus \(strandedBonus).",
                     duration: 850_000_000
                 )
             )
@@ -1008,6 +1039,16 @@ final class GameModel: ObservableObject {
         }
         escapingBlocks = []
         board = nextBoard
+        boardGeneration += 1
+        // The "FRESH PATH" announcement is about the board we just replaced; once a fresh
+        // one is dealt it's stale. Drop it whether it's already on screen or still queued
+        // behind another toast, so it can never surface after the swap (F7).
+        pendingEvents.removeAll { $0.kind == .freshPath }
+        if boardToast?.style == .freshPath {
+            boardToast = nil
+            toastTask?.cancel()
+            drainEventQueue()
+        }
         boardRefreshTask = nil
         pendingRefreshReason = nil
         isDealing = false
