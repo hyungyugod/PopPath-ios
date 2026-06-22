@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 struct GameView: View {
     @Environment(\.appLanguage) private var language
@@ -107,6 +108,12 @@ struct GameView: View {
         .onChange(of: hapticsEnabled) { _, _ in
             game.configureFeedback(soundEnabled: soundEnabled, hapticsEnabled: hapticsEnabled)
         }
+        // Speak each board event (clear / fresh path / unlock / milestone chain) to VoiceOver,
+        // throttled to events since it only fires when the toast changes (G6).
+        .onChange(of: game.boardToast?.id) { _, _ in
+            guard UIAccessibility.isVoiceOverRunning, let toast = game.boardToast else { return }
+            UIAccessibility.post(notification: .announcement, argument: toast.announcement(language: language))
+        }
     }
 
     private func requestExit() {
@@ -126,6 +133,8 @@ struct GameView: View {
                             .fill(Color.ppCardCream)
                             .shadow(color: Color.ppInkGray.opacity(0.11), radius: 9, x: 0, y: 4)
                     )
+                    .frame(width: 44, height: 44)
+                    .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             .accessibilityLabel(language.text("Exit game", "게임 나가기"))
@@ -142,6 +151,8 @@ struct GameView: View {
                             .fill(Color.ppCardCream)
                             .shadow(color: Color.ppInkGray.opacity(0.11), radius: 9, x: 0, y: 4)
                     )
+                    .frame(width: 44, height: 44)
+                    .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             .accessibilityLabel(language.text("Pause", "일시정지"))
@@ -338,6 +349,8 @@ private struct HUDTile: View {
                 .font(.ppBody(10, weight: .heavy, language: language))
                 .tracking(language == .korean ? 0 : 0.9)
                 .foregroundStyle(labelColor)
+                .lineLimit(1)
+                .minimumScaleFactor(0.74)
             Text(value)
                 .font(.ppDisplay(22, weight: .bold, language: language))
                 .monospacedDigit()
@@ -498,7 +511,12 @@ private struct BoardView: View {
                                 isOpen: openPositions.contains(position),
                                 isPressed: pressedCell == position,
                                 showOpenHint: colorAssist,
-                                reduceMotion: reduceMotion
+                                reduceMotion: reduceMotion,
+                                onAccessibilityPop: {
+                                    if let block = board[row][column] {
+                                        onFlick(row, column, block.direction)
+                                    }
+                                }
                             )
                         }
                     }
@@ -506,6 +524,8 @@ private struct BoardView: View {
                     // keep the same identity and animate per-cell as before.
                     .id(boardGeneration)
                     .transition(.opacity)
+                    // Group cells as one board element so VoiceOver navigates them row-major.
+                    .accessibilityElement(children: .contain)
 
                     ForEach(escapingBlocks) { escapingBlock in
                         EscapingBlockView(
@@ -617,28 +637,32 @@ private struct EscapingBlockView: View {
     @State private var progress: CGFloat = 0
 
     var body: some View {
-        let visibleProgress = reduceMotion ? 1 : progress
+        let visibleProgress = progress
         let burstLevel = min(CGFloat(max(escapingBlock.chain, 1)) / 6 + 0.32, 1.18)
         let ringProgress = ppSmoothStep(ppUnit((visibleProgress - 0.04) / 0.66))
         let tileOpacity = 1 - ppSmoothStep(ppUnit((visibleProgress - 0.32) / 0.6))
 
         ZStack {
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .stroke(burstColor.opacity(Double((1 - ringProgress) * 0.7)), lineWidth: 2 + burstLevel * 2)
-                .scaleEffect(0.9 + ringProgress * (0.54 + burstLevel * 0.16))
-                .opacity(1 - ringProgress)
+            // The ring + particle burst are motion; under reduce-motion the pop is confirmed
+            // by a quick opacity fade (plus the +N marker and haptic) instead (F3).
+            if !reduceMotion {
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .stroke(burstColor.opacity(Double((1 - ringProgress) * 0.7)), lineWidth: 2 + burstLevel * 2)
+                    .scaleEffect(0.9 + ringProgress * (0.54 + burstLevel * 0.16))
+                    .opacity(1 - ringProgress)
 
-            ForEach(0..<particleCount, id: \.self) { index in
-                PopBurstParticle(
-                    index: index,
-                    count: particleCount,
-                    progress: visibleProgress,
-                    cellSize: cellSize,
-                    direction: escapingBlock.block.direction,
-                    tone: escapingBlock.block.tone,
-                    burstColor: burstColor,
-                    intensity: burstLevel
-                )
+                ForEach(0..<particleCount, id: \.self) { index in
+                    PopBurstParticle(
+                        index: index,
+                        count: particleCount,
+                        progress: visibleProgress,
+                        cellSize: cellSize,
+                        direction: escapingBlock.block.direction,
+                        tone: escapingBlock.block.tone,
+                        burstColor: burstColor,
+                        intensity: burstLevel
+                    )
+                }
             }
 
             RoundedRectangle(cornerRadius: 12, style: .continuous)
@@ -652,21 +676,21 @@ private struct EscapingBlockView: View {
                 .font(.system(size: 18, weight: .bold, design: .rounded))
                 .symbolRenderingMode(.monochrome)
                 .foregroundStyle(Color.ppInkGray)
-                .rotationEffect(.degrees(arrowRotation(visibleProgress)))
+                .rotationEffect(.degrees(reduceMotion ? 0 : arrowRotation(visibleProgress)))
         }
         .frame(width: cellSize, height: cellSize)
         .offset(releaseOffset(progress: visibleProgress, burstLevel: burstLevel))
-        .scaleEffect(popScale(visibleProgress))
+        .scaleEffect(reduceMotion ? 1 : popScale(visibleProgress))
         .opacity(tileOpacity)
         .zIndex(20)
         .compositingGroup()
         .onAppear {
-            guard !reduceMotion else {
-                progress = 1
-                return
-            }
-
-            withAnimation(.timingCurve(0.18, 0.82, 0.24, 1, duration: escapingBlock.duration)) {
+            // In both modes `progress` animates 0→1; reduce-motion just skips the slide/scale/
+            // particles above and reads as a clean fade-out.
+            let curve: Animation = reduceMotion
+                ? .easeOut(duration: escapingBlock.duration)
+                : .timingCurve(0.18, 0.82, 0.24, 1, duration: escapingBlock.duration)
+            withAnimation(curve) {
                 progress = 1
             }
         }
@@ -686,15 +710,18 @@ private struct EscapingBlockView: View {
     }
 
     private var particleCount: Int {
-        escapingBlock.chain >= 5 ? 8 : 6
+        escapingBlock.chain >= 5 ? 7 : 6
     }
 
     private var burstColor: Color {
         .ppSoftCoral
     }
 
+    // Photosensitivity guard (G8): the full-tile white flash is capped well below its old
+    // 0.58 peak and suppressed entirely under reduce-motion, so a fast chain never strobes.
     private func flashOpacity(_ value: CGFloat) -> Double {
-        Double(max(0, 0.58 - value * 1.9))
+        guard !reduceMotion else { return 0 }
+        return Double(max(0, 0.30 - value * 1.1))
     }
 
     private func arrowRotation(_ value: CGFloat) -> Double {
@@ -839,6 +866,9 @@ private struct BoardCell: View {
     /// every open cell regardless; this only brightens/pulses it.
     let showOpenHint: Bool
     let reduceMotion: Bool
+    /// VoiceOver pop: an open occupied cell exposes this as its activate action, since a
+    /// VoiceOver user can't flick (WI-5.5). The board gates it on `isDealing`/`running`.
+    var onAccessibilityPop: () -> Void = {}
 
     var body: some View {
         ZStack {
@@ -852,6 +882,11 @@ private struct BoardCell: View {
         .aspectRatio(1, contentMode: .fit)
         .scaleEffect(pressScale)
         .animation(reduceMotion ? nil : .spring(response: 0.2, dampingFraction: 0.62), value: isPressed)
+        .modifier(BoardCellAccessibility(
+            label: block.map { accessibilityLabel(for: $0) },
+            isButton: block != nil && isOpen,
+            onPop: onAccessibilityPop
+        ))
     }
 
     private func blockView(_ block: PopBlock) -> some View {
@@ -883,7 +918,6 @@ private struct BoardCell: View {
         }
         .modifier(ShakeEffect(shakes: block.isMiss ? 2 : 0))
         .animation(.linear(duration: 0.18), value: block.isMiss)
-        .accessibilityLabel(accessibilityLabel(for: block))
     }
 
     private var pressScale: CGFloat {
@@ -894,9 +928,10 @@ private struct BoardCell: View {
     private func accessibilityLabel(for block: PopBlock) -> String {
         let directionName = block.direction.accessibilityName(language: language)
         if isOpen {
+            // A button; VoiceOver appends "double-tap to activate", which fires the pop.
             return language.text(
-                "Swipe \(directionName) to clear",
-                "\(directionName)으로 스와이프해서 제거"
+                "\(directionName) arrow, open path",
+                "\(directionName) 화살표, 열린 길"
             )
         }
 
@@ -904,6 +939,33 @@ private struct BoardCell: View {
             "\(directionName) arrow, blocked",
             "\(directionName) 화살표, 막힌 길"
         )
+    }
+}
+
+/// Per-cell VoiceOver: occupied open cells are buttons whose activate action pops them;
+/// blocked cells are described but not actionable; empty cells are hidden so VoiceOver skips
+/// the dead space (WI-5.5).
+private struct BoardCellAccessibility: ViewModifier {
+    let label: String?
+    let isButton: Bool
+    let onPop: () -> Void
+
+    func body(content: Content) -> some View {
+        if let label {
+            if isButton {
+                content
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel(label)
+                    .accessibilityAddTraits(.isButton)
+                    .accessibilityAction { onPop() }
+            } else {
+                content
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel(label)
+            }
+        } else {
+            content.accessibilityHidden(true)
+        }
     }
 }
 
@@ -933,6 +995,9 @@ private struct BoardToastView: View {
         )
         .lineLimit(1)
         .minimumScaleFactor(0.78)
+        // Spoken via UIAccessibility announcement on the board toast change, so the transient
+        // visual doesn't also grab VoiceOver focus.
+        .accessibilityHidden(true)
     }
 
     private var iconName: String {
@@ -945,33 +1010,11 @@ private struct BoardToastView: View {
     }
 
     private var titleText: String {
-        guard language == .korean else { return toast.title }
-
-        switch toast.title {
-        case "MEGA CHAIN":
-            return "메가 체인"
-        case "BIG CHAIN":
-            return "빅 체인"
-        case "CHAIN":
-            return "체인"
-        case "PATH BURST":
-            return "길이 팡!"
-        case "DOUBLE UNLOCK":
-            return "길 두 개!"
-        case "UNLOCK":
-            return "길 열림"
-        case "FRESH PATH":
-            return "새 길!"
-        case "BOARD CLEAR":
-            return "싹쓸이!"
-        default:
-            return toast.title
-        }
+        toast.localizedTitle(language: language)
     }
 
     private var detailText: String {
-        guard language == .korean else { return toast.detail }
-        return toast.detail == "NO MOVES" ? "갈 곳 없음" : toast.detail
+        toast.localizedDetail(language: language)
     }
 
     private var foregroundColor: Color {

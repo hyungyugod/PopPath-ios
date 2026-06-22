@@ -82,6 +82,17 @@ Status: Complete
 - Added tests for the per-pop cap, board-clear scaling, floating score, and chain-decay freeze-on-pause; recomputed the affected score assertions.
 - Adversarial review pass: fixed an end-of-urgency pulse that never settled and tightened chain-decay state hygiene (miss path, duration reset, distinct tick haptic, mid-deal suppression).
 
+## Sprint 5B: Accessibility completion & motion safety
+
+Status: Complete
+
+- VoiceOver (WI-5.5): occupied open cells are buttons whose activate action pops them (a VoiceOver user can't flick); blocked cells are described but not actionable; empty cells are hidden; the board is grouped for row-major navigation; board events (clear / fresh path / unlock / milestone chain) are spoken via localized `UIAccessibility` announcements; the transient toast and the Home decorative cluster are hidden from VoiceOver.
+- Dynamic Type (WI-5.6): custom fonts now scale via `relativeTo:`, capped app-wide at xxLarge so the fixed-viewport board/HUD layout holds; Settings is scrollable and tutorial/settings copy wraps instead of clamping.
+- Effective Reduce Motion (WI-5.6): derived once as system OR in-app toggle and threaded into gameplay and the tutorial; under reduce motion the pop is a clean fade plus the +N marker and haptic instead of a slide/burst.
+- Photosensitivity (WI-5.6): the white pop flash is capped well below its old peak and suppressed entirely under reduce motion; the big-chain particle burst is trimmed.
+- Toggle traits (WI-5.6) on settings switches; AA contrast for secondary text (WI-5.7, darkened warm gray); and ≥44pt tap targets for the home/pause, back, language, and toggle controls (WI-5.7).
+- Added a localized-announcement test; adversarial review pass closed four Dynamic Type overflow regressions (global cap, scrollable Settings, shrinkable fixed-tile labels).
+
 ## Remaining Owner-Side Release Inputs
 
 - Apple Developer Team/signing account for device archive and App Store upload.

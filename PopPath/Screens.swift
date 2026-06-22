@@ -23,6 +23,7 @@ struct HomeView: View {
                 Spacer(minLength: isShort ? 22 : 42)
 
                 DecorativeBlockCluster()
+                    .accessibilityHidden(true)
                     .padding(.bottom, isShort ? 22 : 30)
 
                 HStack(alignment: .firstTextBaseline, spacing: 0) {
@@ -116,9 +117,11 @@ private struct MiniRecordStat: View {
                 .font(.ppBody(10, weight: .heavy, language: language))
                 .tracking(language == .korean ? 0 : 0.6)
                 .foregroundStyle(Color.ppMintText.opacity(0.78))
+                .lineLimit(1)
+                .minimumScaleFactor(0.72)
         }
         .frame(maxWidth: .infinity)
-        .frame(height: 42)
+        .frame(minHeight: 42)
         .background(
             RoundedRectangle(cornerRadius: 14, style: .continuous)
                 .fill(Color.ppSoftSage)
@@ -416,7 +419,7 @@ struct RecordsView: View {
                         Image(systemName: "chevron.left")
                             .font(.system(size: 18, weight: .bold, design: .rounded))
                             .foregroundStyle(Color.ppInkGray)
-                            .frame(width: 38, height: 38)
+                            .frame(width: 44, height: 44)
                             .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
@@ -653,22 +656,26 @@ struct TutorialView: View {
 
             miniBoard
 
+            // Wraps rather than clamping to one line so the taught copy stays legible at
+            // larger Dynamic Type sizes (H6).
             Text(title)
                 .font(.ppDisplay(16, weight: .medium, language: language))
                 .foregroundStyle(Color.ppWarmCream)
-                .lineLimit(1)
-                .minimumScaleFactor(0.82)
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
                 .padding(.horizontal, 20)
                 .padding(.vertical, 12)
-                .background(Capsule(style: .continuous).fill(Color.ppInkGray))
+                .background(RoundedRectangle(cornerRadius: 22, style: .continuous).fill(Color.ppInkGray))
                 .shadow(color: Color.ppInkGray.opacity(0.2), radius: 20, x: 0, y: 10)
+                .padding(.horizontal, 12)
                 .padding(.top, 40)
 
             Text(subtitle)
                 .font(.ppBody(13, weight: .medium, language: language))
                 .foregroundStyle(Color.ppWarmGray)
-                .lineLimit(1)
-                .minimumScaleFactor(0.8)
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.horizontal, 12)
                 .padding(.top, 14)
 
             Spacer()
@@ -859,7 +866,7 @@ struct SettingsView: View {
                     Image(systemName: "chevron.left")
                         .font(.system(size: 18, weight: .bold, design: .rounded))
                         .foregroundStyle(Color.ppInkGray)
-                        .frame(width: 38, height: 38)
+                        .frame(width: 44, height: 44)
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
@@ -876,36 +883,39 @@ struct SettingsView: View {
             .padding(.top, 18)
             .padding(.bottom, 24)
 
-            VStack(spacing: 12) {
-                LanguageSettingRow(language: $language)
-                SettingRow(
-                    title: appLanguage.text("Sound", "사운드"),
-                    subtitle: appLanguage.text("Soft swipes and round chimes", "스와이프와 라운드 효과음을 재생해요"),
-                    isOn: $soundEnabled
-                )
-                SettingRow(
-                    title: appLanguage.text("Haptics", "진동"),
-                    subtitle: appLanguage.text("Gentle feedback on every swipe", "스와이프마다 짧은 손맛을 줘요"),
-                    isOn: $hapticsEnabled
-                )
-                SettingRow(
-                    title: appLanguage.text("Open-Path Highlight", "열린 길 강조"),
-                    subtitle: appLanguage.text("Brighten and pulse open paths", "열린 길을 더 밝게 강조해요"),
-                    isOn: $colorAssist
-                )
-                SettingRow(
-                    title: appLanguage.text("Reduce Motion", "움직임 줄이기"),
-                    subtitle: appLanguage.text("Keep motion calm and minimal", "움직임을 차분하게 줄여요"),
-                    isOn: $reduceMotion
-                )
+            // Scrolls so the now-wrapping rows stay reachable at larger Dynamic Type, mirroring
+            // Records/Result.
+            ScrollView(showsIndicators: false) {
+                VStack(spacing: 12) {
+                    LanguageSettingRow(language: $language)
+                    SettingRow(
+                        title: appLanguage.text("Sound", "사운드"),
+                        subtitle: appLanguage.text("Soft swipes and round chimes", "스와이프와 라운드 효과음을 재생해요"),
+                        isOn: $soundEnabled
+                    )
+                    SettingRow(
+                        title: appLanguage.text("Haptics", "진동"),
+                        subtitle: appLanguage.text("Gentle feedback on every swipe", "스와이프마다 짧은 손맛을 줘요"),
+                        isOn: $hapticsEnabled
+                    )
+                    SettingRow(
+                        title: appLanguage.text("Open-Path Highlight", "열린 길 강조"),
+                        subtitle: appLanguage.text("Brighten and pulse open paths", "열린 길을 더 밝게 강조해요"),
+                        isOn: $colorAssist
+                    )
+                    SettingRow(
+                        title: appLanguage.text("Reduce Motion", "움직임 줄이기"),
+                        subtitle: appLanguage.text("Keep motion calm and minimal", "움직임을 차분하게 줄여요"),
+                        isOn: $reduceMotion
+                    )
+
+                    Text("PopPath! v0")
+                        .font(.ppBody(12, weight: .semibold, language: appLanguage))
+                        .foregroundStyle(Color.ppWarmGray)
+                        .padding(.top, 28)
+                        .padding(.bottom, 26)
+                }
             }
-
-            Spacer()
-
-            Text("PopPath! v0")
-                .font(.ppBody(12, weight: .semibold, language: appLanguage))
-                .foregroundStyle(Color.ppWarmGray)
-                .padding(.bottom, 26)
         }
         .ppScreenPadding()
     }
@@ -924,8 +934,7 @@ private struct LanguageSettingRow: View {
                 Text(appLanguage.text("Switch game text", "말맛을 바꿔요"))
                     .font(.ppBody(13, weight: .medium, language: appLanguage))
                     .foregroundStyle(Color.ppWarmGray)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.82)
+                    .fixedSize(horizontal: false, vertical: true)
             }
 
             Spacer(minLength: 12)
@@ -940,14 +949,16 @@ private struct LanguageSettingRow: View {
                         Text(option.shortName)
                             .font(.ppBody(12, weight: .heavy, language: option))
                             .foregroundStyle(language == option ? Color.ppMintButtonText : Color.ppWarmGray)
-                            .frame(width: 38, height: 28)
+                            .frame(width: 40, height: 34)
                             .background(
                                 Capsule(style: .continuous)
                                     .fill(language == option ? Color.ppFreshMint : .clear)
                             )
+                            .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel(option.displayName)
+                    .accessibilityAddTraits(language == option ? [.isSelected] : [])
                 }
             }
             .padding(3)
@@ -980,11 +991,13 @@ private struct SettingRow: View {
                 Text(title)
                     .font(.ppDisplay(17, weight: .semibold, language: language))
                     .foregroundStyle(Color.ppInkGray)
+                    .fixedSize(horizontal: false, vertical: true)
+                // Wraps instead of clamping to one line so larger Dynamic Type sizes stay
+                // readable (I6).
                 Text(subtitle)
                     .font(.ppBody(13, weight: .medium, language: language))
                     .foregroundStyle(Color.ppWarmGray)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.82)
+                    .fixedSize(horizontal: false, vertical: true)
             }
 
             Spacer(minLength: 12)
@@ -1004,10 +1017,14 @@ private struct SettingRow: View {
                             .shadow(color: Color.ppInkGray.opacity(0.18), radius: 6, x: 0, y: 2)
                             .padding(3)
                     }
+                    // Keep the switch glyph compact but give it a ≥44pt hit target (G4).
+                    .frame(width: 56, height: 44)
+                    .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             .accessibilityLabel(title)
             .accessibilityValue(isOn ? language.text("On", "켬") : language.text("Off", "끔"))
+            .accessibilityAddTraits(.isToggle)
         }
         .padding(.horizontal, 18)
         .padding(.vertical, 16)

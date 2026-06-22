@@ -31,6 +31,11 @@ struct RootView: View {
     @AppStorage("colorAssist") private var colorAssist = true
     @AppStorage("reduceMotion") private var reduceMotion = false
     @AppStorage("appLanguage") private var appLanguageRaw = AppLanguage.english.rawValue
+    @Environment(\.accessibilityReduceMotion) private var systemReduceMotion
+    /// Effective reduce motion is the system setting OR the in-app toggle, derived once here
+    /// and threaded into every animation site (G2), so honoring iOS Reduce Motion never
+    /// depends on the user also flipping the in-app switch.
+    private var effectiveReduceMotion: Bool { systemReduceMotion || reduceMotion }
     #if DEBUG
     @State private var handledLaunchArguments = false
     #endif
@@ -45,6 +50,11 @@ struct RootView: View {
                 .transition(.opacity.combined(with: .scale(scale: 0.985)))
         }
         .preferredColorScheme(.light)
+        // Fonts scale with Dynamic Type (WI-5.6), but this is a real-time tile game with a
+        // fixed single-viewport board/HUD layout. Cap at xxLarge — the largest size the fixed
+        // tiles and one-screen Home/Game layouts hold without clipping — so accessibility sizes
+        // still get a meaningful bump without shattering the layout.
+        .dynamicTypeSize(...DynamicTypeSize.xxLarge)
         .onAppear {
             handleDebugLaunchArgumentsIfNeeded()
         }
@@ -102,7 +112,7 @@ struct RootView: View {
             .onAppear { game.refreshDailyIfDateChanged() }
         case .tutorial:
             TutorialView(
-                reduceMotion: reduceMotion,
+                reduceMotion: effectiveReduceMotion,
                 onComplete: {
                     hasSeenTutorial = true
                     startGame()
@@ -114,7 +124,7 @@ struct RootView: View {
                 soundEnabled: soundEnabled,
                 hapticsEnabled: hapticsEnabled,
                 colorAssist: colorAssist,
-                reduceMotion: reduceMotion,
+                reduceMotion: effectiveReduceMotion,
                 onExit: {
                     // GameView already finalized the round (credited exit); just route home.
                     withAnimation(.spring(response: 0.38, dampingFraction: 0.86)) {

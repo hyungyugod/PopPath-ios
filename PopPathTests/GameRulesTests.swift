@@ -812,6 +812,21 @@ final class GameRulesTests: XCTestCase {
         XCTAssertEqual(model.chain, 1)
     }
 
+    // MARK: - Sprint 5B: accessibility
+
+    func testBoardToastAnnouncementIsLocalized() {
+        let toast = BoardToast(title: "BOARD CLEAR", detail: "+240", style: .clear)
+
+        let english = toast.announcement(language: .english)
+        XCTAssertTrue(english.contains("BOARD CLEAR"))
+        XCTAssertTrue(english.contains("+240"))
+
+        let korean = toast.announcement(language: .korean)
+        XCTAssertTrue(korean.contains("싹쓸이!"))
+        XCTAssertTrue(korean.contains("+240"))
+        XCTAssertFalse(korean.contains("BOARD CLEAR"))
+    }
+
     private func dayDate(_ year: Int, _ month: Int, _ day: Int) -> Date {
         var components = DateComponents()
         components.year = year

@@ -219,6 +219,34 @@ struct BoardToast: Identifiable, Equatable {
     let title: String
     let detail: String
     let style: Style
+
+    /// Localized title, shared by the on-screen toast and the VoiceOver announcement so the
+    /// two can never drift (WI-5.5).
+    func localizedTitle(language: AppLanguage) -> String {
+        guard language == .korean else { return title }
+
+        switch title {
+        case "MEGA CHAIN": return "메가 체인"
+        case "BIG CHAIN": return "빅 체인"
+        case "CHAIN": return "체인"
+        case "PATH BURST": return "길이 팡!"
+        case "DOUBLE UNLOCK": return "길 두 개!"
+        case "UNLOCK": return "길 열림"
+        case "FRESH PATH": return "새 길!"
+        case "BOARD CLEAR": return "싹쓸이!"
+        default: return title
+        }
+    }
+
+    func localizedDetail(language: AppLanguage) -> String {
+        guard language == .korean else { return detail }
+        return detail == "NO MOVES" ? "갈 곳 없음" : detail
+    }
+
+    /// Spoken VoiceOver announcement for this event, localized (G6).
+    func announcement(language: AppLanguage) -> String {
+        "\(localizedTitle(language: language)), \(localizedDetail(language: language))"
+    }
 }
 
 /// A single reward/announcement produced by the board. Drained by one ordered queue so

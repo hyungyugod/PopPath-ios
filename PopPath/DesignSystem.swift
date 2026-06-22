@@ -64,34 +64,46 @@ extension Color {
     static let ppFreshMint = Color(hex: 0x8FD8B5)
     static let ppSoftCoral = Color(hex: 0xF3A38A)
     static let ppInkGray = Color(hex: 0x2F3942)
-    static let ppWarmGray = Color(hex: 0x7E878E)
+    // Darkened from 0x7E878E to clear AA (≥4.5:1) for secondary text on cream/sage (G5).
+    static let ppWarmGray = Color(hex: 0x5C6469)
     static let ppMintText = Color(hex: 0x3F7A5E)
     static let ppMintButtonText = Color(hex: 0x23413A)
 }
 
 extension Font {
+    // All custom fonts are bound to a Dynamic Type text style via `relativeTo:` so they
+    // scale with the user's preferred content size (G2/G3) instead of staying pixel-fixed.
+    // Korean (Jua) renders visually smaller at a given point size, so it gets a small uplift.
     static func ppDisplay(
         _ size: CGFloat,
         weight: Font.Weight = .semibold,
-        language: AppLanguage = .english
+        language: AppLanguage = .english,
+        relativeTo textStyle: Font.TextStyle = .body
     ) -> Font {
         if language == .korean {
-            return .custom("Jua-Regular", size: size).weight(koreanWeight(for: weight))
+            return .custom("Jua-Regular", size: koreanSize(size), relativeTo: textStyle)
+                .weight(koreanWeight(for: weight))
         }
 
-        return .custom(fredokaName(for: weight), size: size)
+        return .custom(fredokaName(for: weight), size: size, relativeTo: textStyle)
     }
 
     static func ppBody(
         _ size: CGFloat,
         weight: Font.Weight = .regular,
-        language: AppLanguage = .english
+        language: AppLanguage = .english,
+        relativeTo textStyle: Font.TextStyle = .body
     ) -> Font {
         if language == .korean {
-            return .custom("Jua-Regular", size: size).weight(koreanWeight(for: weight))
+            return .custom("Jua-Regular", size: koreanSize(size), relativeTo: textStyle)
+                .weight(koreanWeight(for: weight))
         }
 
-        return .custom(nunitoName(for: weight), size: size)
+        return .custom(nunitoName(for: weight), size: size, relativeTo: textStyle)
+    }
+
+    private static func koreanSize(_ size: CGFloat) -> CGFloat {
+        (size * 1.03).rounded()
     }
 
     private static func fredokaName(for weight: Font.Weight) -> String {
