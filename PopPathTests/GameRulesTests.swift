@@ -1071,6 +1071,28 @@ final class GameRulesTests: XCTestCase {
     }
 
     @MainActor
+    func testChainDecayFreezesDuringPostClearDeal() {
+        let fixedNow = Date(timeIntervalSinceReferenceDate: 6_000)
+        let model = GameModel(makeInitialBoard: false, now: { fixedNow })
+        var board = GameRules.emptyBoard()
+        board[0][0] = PopBlock(direction: .up, tone: .mistBlue)
+
+        model.loadBoardForTesting(board)
+        // This pop clears the board: the chain is kept alive for the next board and a deal is
+        // scheduled. The decay must freeze across that un-actionable window rather than draining.
+        model.swipe(row: 0, column: 0, hapticsEnabled: false)
+
+        XCTAssertEqual(model.chain, 1, "Chain is kept alive across a board clear")
+        // Far past the decay window: without the freeze this would read 0 (lapsed); frozen it
+        // stays full because the player can't act during the deal.
+        XCTAssertEqual(
+            model.chainDecayFraction(at: fixedNow.addingTimeInterval(10)),
+            1,
+            accuracy: 0.001
+        )
+    }
+
+    @MainActor
     private func finishDailyRound(_ model: GameModel) {
         var board = GameRules.emptyBoard()
         board[3][5] = PopBlock(direction: .right, tone: .mistBlue)

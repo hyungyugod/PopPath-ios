@@ -476,6 +476,11 @@ final class GameModel: ObservableObject {
     private var surfacedNewBestThisRun = false
     /// Achievements already celebrated mid-run, so each surfaces at most once per round (K5).
     private var liveSurfacedAchievementIDs: Set<String> = []
+    /// While true (one synchronous pop), reward haptics are collapsed to the single strongest
+    /// tier instead of each firing — so an unlock+clear pop doesn't bury the pop confirmation
+    /// under stacked impacts. Audio is unaffected (it is already async-staggered and pooled).
+    private var suppressRewardHaptics = false
+    private var strongestSuppressedHaptic: Haptics.Event?
     /// Full window (seconds) of the current chain's decay, used as the indicator's denominator.
     private var chainDecayDuration: TimeInterval = 0
     /// Remaining chain-decay seconds captured at pause, so the indicator freezes and resume
@@ -628,9 +633,7 @@ final class GameModel: ObservableObject {
         roundClock?.pause(at: now())
         // Freeze the chain-decay indicator at whatever was left, so resume restores exactly
         // that rather than handing back a fresh full window.
-        if chain > 0, let deadline = chainDecayDeadline {
-            pausedChainDecayRemaining = max(0, deadline.timeIntervalSince(now()))
-        }
+        freezeChainDecayIfNeeded()
         timerTask?.cancel()
         chainResetTask?.cancel()
         boardRefreshTask?.cancel()
@@ -645,16 +648,34 @@ final class GameModel: ObservableObject {
         runState = .running
         syncTimeFromClock()
         startTimer()
-        if chain > 0, let remaining = pausedChainDecayRemaining {
-            chainDecayDeadline = now().addingTimeInterval(remaining)
-            pausedChainDecayRemaining = nil
-            armChainResetTask(after: remaining)
-        } else if chain > 0 {
-            scheduleChainReset()
+        if chain > 0 {
+            if pausedChainDecayRemaining != nil {
+                restoreChainDecay()
+            } else {
+                scheduleChainReset()
+            }
         }
         if let pendingRefreshReason {
             scheduleBoardRefresh(reason: pendingRefreshReason)
         }
+    }
+
+    /// Freezes the chain-decay clock at its current remaining and stops the reset timer, so an
+    /// un-actionable window (pause, or the post-clear/post-stuck board deal) doesn't drain the
+    /// chain the player can't act on. Idempotent: a window already frozen keeps its value.
+    private func freezeChainDecayIfNeeded() {
+        guard chain > 0, pausedChainDecayRemaining == nil, let deadline = chainDecayDeadline else { return }
+        pausedChainDecayRemaining = max(0, deadline.timeIntervalSince(now()))
+        chainResetTask?.cancel()
+    }
+
+    /// Restores a frozen chain-decay window onto the now-actionable board: the player gets back
+    /// exactly the grace they had when the window froze, mirroring resume().
+    private func restoreChainDecay() {
+        guard chain > 0, let remaining = pausedChainDecayRemaining else { return }
+        chainDecayDeadline = now().addingTimeInterval(remaining)
+        pausedChainDecayRemaining = nil
+        armChainResetTask(after: remaining)
     }
 
     /// Confirmed exit: credit pops / score toward lifetime totals & best (no summary, no
@@ -800,9 +821,18 @@ final class GameModel: ObservableObject {
             let feedbackEvent = Self.feedbackEvent(forChain: chain)
             showChainToastIfNeeded()
             scheduleChainReset()
+            // Collapse this pop's haptics (pop tier + any unlock + any clear/fresh-path) into
+            // one strongest impact so the bonus haptics don't bury the pop confirmation; sound
+            // for each still plays (layered, async).
+            suppressRewardHaptics = true
+            strongestSuppressedHaptic = nil
             awardUnlockBonusIfNeeded(openBeforeRemoval: openBeforeRemoval)
             resolveBoardAfterRemoval()
             queueFeedback(feedbackEvent, hapticsEnabled: hapticsEnabled, soundEnabled: soundEnabled)
+            suppressRewardHaptics = false
+            if let popHaptic = strongestSuppressedHaptic {
+                Haptics.play(popHaptic, enabled: hapticsEnabled)
+            }
             surfaceLiveMilestones()
             // All rewards from this pop are now enqueued; surface the highest-priority one.
             drainEventQueue()
@@ -1290,6 +1320,11 @@ final class GameModel: ObservableObject {
 
     private func scheduleBoardRefresh(reason: BoardRefreshReason) {
         boardRefreshTask?.cancel()
+        // The post-clear / post-stuck deal is an un-actionable window (input is gated and the
+        // board is empty/being replaced), so freeze the chain-decay clock across it just like
+        // pause does — otherwise a kept-alive chain is charged time it can't spend, and a slow
+        // off-main generation could even lapse the chain mid-deal. `dealNextBoard` restores it.
+        freezeChainDecayIfNeeded()
         // Remembered so resume() can re-schedule a deal that was pending when the player
         // paused inside the (brief) post-clear / post-stuck window.
         pendingRefreshReason = reason
@@ -1361,6 +1396,8 @@ final class GameModel: ObservableObject {
         boardRefreshTask = nil
         pendingRefreshReason = nil
         isDealing = false
+        // The board is actionable again — give back the chain-decay grace frozen for the deal.
+        restoreChainDecay()
     }
 
     /// Pop haptic tier (J3): a single pop is the light `.escape`; a 2–4 chain steps up to
@@ -1379,8 +1416,31 @@ final class GameModel: ObservableObject {
         // Fire in sync with the visual pop (F9): the prior 10ms Task hop pushed audio/haptics
         // a frame behind the on-screen pop. Miss feedback is already rate-limited by the
         // caller via `shouldEmitMissFeedback`.
-        Haptics.play(event, enabled: hapticsEnabled)
-        SoundEffects.shared.play(event, enabled: soundEnabled)
+        if suppressRewardHaptics {
+            if hapticsEnabled {
+                strongestSuppressedHaptic = Self.strongerHaptic(strongestSuppressedHaptic, event)
+            }
+            SoundEffects.shared.play(event, enabled: soundEnabled)
+        } else {
+            Haptics.play(event, enabled: hapticsEnabled)
+            SoundEffects.shared.play(event, enabled: soundEnabled)
+        }
+    }
+
+    private static func strongerHaptic(_ current: Haptics.Event?, _ candidate: Haptics.Event) -> Haptics.Event {
+        guard let current else { return candidate }
+        return hapticRank(candidate) >= hapticRank(current) ? candidate : current
+    }
+
+    private static func hapticRank(_ event: Haptics.Event) -> Int {
+        switch event {
+        case .boardClear: return 5
+        case .bigChain: return 4
+        case .unlock: return 3
+        case .chain, .freshPath: return 2
+        case .escape: return 1
+        case .miss, .finish, .tick: return 0
+        }
     }
 
     private func showChainToastIfNeeded() {
