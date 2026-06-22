@@ -1170,7 +1170,7 @@ struct SettingsView: View {
                         action: { showResetConfirm = true }
                     )
 
-                    Text("PopPath! v0")
+                    Text("PopPath \(Bundle.main.appVersionDisplay)")
                         .font(.ppBody(12, weight: .semibold, language: appLanguage))
                         .foregroundStyle(Color.ppWarmGray)
                         .padding(.top, 28)

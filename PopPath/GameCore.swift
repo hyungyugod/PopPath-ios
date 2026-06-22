@@ -200,7 +200,6 @@ enum GameMode: String, Codable, Equatable {
 struct DailyChallenge: Equatable {
     let id: String
     let seed: UInt64
-    let displayLabel: String
 
     static func today(
         calendar: Calendar = .autoupdatingCurrent,
@@ -219,11 +218,17 @@ struct DailyChallenge: Equatable {
         let day = components.day ?? 1
         let id = String(format: "%04d%02d%02d", year, month, day)
 
-        return DailyChallenge(
-            id: id,
-            seed: stableSeed(for: id),
-            displayLabel: "\(month)/\(day)"
-        )
+        return DailyChallenge(id: id, seed: stableSeed(for: id))
+    }
+
+    /// Friendly, per-language label (EN "Jun 22", KO "6월 22일"), formatted at display time
+    /// rather than baked in at creation so it follows the language setting (I5).
+    func displayLabel(language: AppLanguage) -> String {
+        guard let date = DailyChallenge.date(fromID: id) else { return id }
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: language == .korean ? "ko_KR" : "en_US")
+        formatter.setLocalizedDateFormatFromTemplate("MMMd")
+        return formatter.string(from: date)
     }
 
     /// Parses a `YYYYMMDD` challenge id back to a date (anchored at noon to dodge DST edges),
@@ -753,8 +758,10 @@ enum Haptics {
             softImpact.impactOccurred(intensity: 0.65)
             softImpact.prepare()
         case .boardClear:
-            notification.notificationOccurred(.success)
-            notification.prepare()
+            // Distinct from the round-finish cue (J4): a punchy heavy impact for a board clear
+            // vs the success notification for finishing a round.
+            heavyImpact.impactOccurred(intensity: 0.9)
+            heavyImpact.prepare()
         case .miss:
             notification.notificationOccurred(.warning)
             notification.prepare()
@@ -776,6 +783,7 @@ final class SoundEffects {
     private var playerPool: [Tone: [AVAudioPlayer]] = [:]
     private var playerCursor: [Tone: Int] = [:]
     private var didConfigureAudioSession = false
+    private var didRegisterSessionObservers = false
 
     private init() {}
 
@@ -862,9 +870,39 @@ final class SoundEffects {
         guard !didConfigureAudioSession else { return }
 
         let session = AVAudioSession.sharedInstance()
-        try? session.setCategory(.ambient, options: [.mixWithOthers])
+        // .playback (not .ambient) so enabled SFX still play with the silent switch on — a
+        // deliberate product decision; .mixWithOthers keeps the player's own music going (J1).
+        // Audio only ever plays when the in-app Sound toggle is on, so this never makes noise
+        // the user didn't ask for.
+        try? session.setCategory(.playback, options: [.mixWithOthers])
         try? session.setActive(true)
+        registerSessionObserversIfNeeded()
         didConfigureAudioSession = true
+    }
+
+    // Reactivate the session after an interruption (call, Siri, other app) ends or the audio
+    // route changes, so SFX resume instead of going silent (J6).
+    private func registerSessionObserversIfNeeded() {
+        guard !didRegisterSessionObservers else { return }
+        didRegisterSessionObservers = true
+
+        let center = NotificationCenter.default
+        center.addObserver(forName: AVAudioSession.interruptionNotification, object: nil, queue: .main) { note in
+            guard let raw = note.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt,
+                  AVAudioSession.InterruptionType(rawValue: raw) == .ended
+            else {
+                return
+            }
+            Task { @MainActor in SoundEffects.shared.reactivateSession() }
+        }
+        center.addObserver(forName: AVAudioSession.routeChangeNotification, object: nil, queue: .main) { _ in
+            Task { @MainActor in SoundEffects.shared.reactivateSession() }
+        }
+    }
+
+    func reactivateSession() {
+        guard didConfigureAudioSession else { return }
+        try? AVAudioSession.sharedInstance().setActive(true)
     }
 
     private func preparePlayers(for tone: Tone) {

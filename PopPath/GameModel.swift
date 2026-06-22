@@ -276,27 +276,43 @@ struct RoundSummary: Identifiable, Equatable {
         shareText(language: .english)
     }
 
+    /// Placeholder store link appended to shares until the live App Store URL is known (I2).
+    static let shareURL = "https://apps.apple.com/app/poppath"
+
     func shareText(language: AppLanguage) -> String {
-        let modeLabel = mode == .daily ? "Daily \(dailyId ?? "")" : "Classic"
-        let bestLabel = mode == .daily ? "Daily Best" : "Best"
         let bestValue = mode == .daily ? (dailyBest ?? score) : best
 
         if language == .korean {
-            let koreanModeLabel = mode == .daily ? "오늘의 길 \(dailyId ?? "")" : "클래식"
+            let koreanModeLabel = mode == .daily ? "오늘의 길 · \(friendlyDailyDate(language: .korean))" : "클래식"
             let koreanBestLabel = mode == .daily ? "오늘 최고" : "최고"
 
             return """
             PopPath \(koreanModeLabel)
             점수 \(score.formatted()) | \(koreanBestLabel) \(bestValue.formatted())
             체인 x\(maxChain) | 길 열림 \(metrics.unlocks) | 싹쓸이 \(metrics.boardClears) | 정확도 \(metrics.accuracyPercent)%
+            PopPath 하러 가기: \(Self.shareURL)
             """
         }
+
+        let modeLabel = mode == .daily ? "Daily · \(friendlyDailyDate(language: .english))" : "Classic"
+        let bestLabel = mode == .daily ? "Daily Best" : "Best"
 
         return """
         PopPath \(modeLabel)
         Score \(score.formatted()) | \(bestLabel) \(bestValue.formatted())
         Chain x\(maxChain) | Unlocks \(metrics.unlocks) | Clears \(metrics.boardClears) | Accuracy \(metrics.accuracyPercent)%
+        Play PopPath: \(Self.shareURL)
         """
+    }
+
+    /// Turns the raw `YYYYMMDD` daily id into a friendly localized date (EN "Jun 22",
+    /// KO "6월 22일") for the share sheet (I1).
+    private func friendlyDailyDate(language: AppLanguage) -> String {
+        guard let dailyId, let date = DailyChallenge.date(fromID: dailyId) else { return dailyId ?? "" }
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: language == .korean ? "ko_KR" : "en_US")
+        formatter.setLocalizedDateFormatFromTemplate("MMMd")
+        return formatter.string(from: date)
     }
 }
 

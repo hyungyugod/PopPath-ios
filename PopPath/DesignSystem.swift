@@ -149,6 +149,15 @@ extension Font {
     }
 }
 
+extension Bundle {
+    /// Real app version for display, e.g. "v1.0 (3)" — replaces the hardcoded "v0" (I4).
+    var appVersionDisplay: String {
+        let version = infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0"
+        let build = infoDictionary?["CFBundleVersion"] as? String ?? "1"
+        return "v\(version) (\(build))"
+    }
+}
+
 extension View {
     func ppScreenPadding() -> some View {
         padding(.horizontal, 26)

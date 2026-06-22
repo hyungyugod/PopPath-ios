@@ -386,11 +386,43 @@ final class GameRulesTests: XCTestCase {
         XCTAssertTrue(summary.shareText.contains("Best 2,000"))
         XCTAssertTrue(summary.shareText.contains("Unlocks 3"))
         XCTAssertTrue(summary.shareText.contains("Accuracy 92%"))
+        XCTAssertTrue(summary.shareText.contains("Play PopPath: \(RoundSummary.shareURL)"))
 
         let koreanShareText = summary.shareText(language: .korean)
         XCTAssertTrue(koreanShareText.contains("점수 1,234"))
         XCTAssertTrue(koreanShareText.contains("최고 2,000"))
         XCTAssertTrue(koreanShareText.contains("정확도 92%"))
+        XCTAssertTrue(koreanShareText.contains(RoundSummary.shareURL))
+    }
+
+    // MARK: - Sprint 8: localization, copy & audio polish
+
+    func testDailyShareTextUsesFriendlyDateNotRawID() {
+        let summary = RoundSummary(
+            score: 500,
+            best: 0,
+            maxChain: 3,
+            mode: .daily,
+            dailyBest: 500,
+            dailyId: "20260622"
+        )
+
+        let text = summary.shareText(language: .english)
+        XCTAssertTrue(text.contains("Daily ·"))
+        XCTAssertFalse(text.contains("20260622"), "Raw YYYYMMDD id must be replaced by a friendly date")
+        XCTAssertTrue(text.contains("Daily Best 500"))
+        XCTAssertTrue(text.contains(RoundSummary.shareURL))
+    }
+
+    func testDailyDisplayLabelIsLocalized() {
+        let challenge = DailyChallenge.challenge(for: dayDate(2026, 6, 22), calendar: .autoupdatingCurrent)
+
+        let english = challenge.displayLabel(language: .english)
+        XCTAssertFalse(english.isEmpty)
+        XCTAssertNotEqual(english, "20260622", "Label must be a friendly date, not the raw id")
+
+        let korean = challenge.displayLabel(language: .korean)
+        XCTAssertTrue(korean.contains("월"), "Korean label should use the localized date format")
     }
 
     // MARK: - Sprint 1: direction-true input (WI-1.1)

@@ -113,6 +113,15 @@ Status: Complete
 - Tools & navigation (WI-7.4): confirmed "Reset data" wipes all local storage; Records gains a recent-runs trend and longest-streak; the pause overlay carries Sound/Haptics/Open-Path toggles for mid-run changes; an edge-swipe-back affordance is added to secondary screens; and a live difficulty pip sits in the HUD.
 - `PlayerStats` gained decode-safe Codable so older saves migrate without losing progress. Added tests for streak math, one-shot lockout, mode-split bests, live new-best, reset, progressive achievements, and partial-JSON decode.
 
+## Sprint 8: Localization, copy, audio & final polish
+
+Status: Complete
+
+- Copy & localization (WI-8.1): the share sheet now uses a friendly localized date instead of the raw YYYYMMDD id and appends a (placeholder) store link; the Daily label is formatted per language; the Settings footer shows the real bundle version; and the HUD DAILY/BEST labels use real spacing instead of trailing-space hacks. (The misleading static 60s badge no longer exists.)
+- Empty-cell swap (WI-8.2): a cleared cell fades its empty slot in gently while the block is removed instantly, so it never ghosts behind the pop animation; honors reduce motion.
+- Audio (WI-8.3): the audio session is `.playback` + mix-with-others so enabled SFX play over the silent switch (still only when the in-app Sound toggle is on), with interruption and route-change handling that reactivates the session; board-clear and round-finish now have distinct haptics; and toggling Sound on plays a short preview tone.
+- Added tests for the friendly daily share date, the localized daily label, and the share link.
+
 ## Remaining Owner-Side Release Inputs
 
 - Apple Developer Team/signing account for device archive and App Store upload.

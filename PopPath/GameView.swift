@@ -228,22 +228,23 @@ struct GameView: View {
     @ViewBuilder
     private var footerLeading: some View {
         if game.mode == .daily {
-            HStack(spacing: 7) {
+            // Real HStack spacing instead of trailing-space gap hacks (I7).
+            HStack(spacing: 6) {
                 Image(systemName: "calendar")
                     .font(.system(size: 13, weight: .bold, design: .rounded))
                     .foregroundStyle(Color.ppMintText)
-                Text(language.text("DAILY ", "데일리 "))
+                Text(language.text("DAILY", "데일리"))
                     .font(.ppBody(12, weight: .heavy, language: language))
                     .foregroundStyle(Color.ppMintText)
-                Text(game.dailyChallenge.displayLabel)
+                Text(game.dailyChallenge.displayLabel(language: language))
                     .font(.ppDisplay(13, weight: .bold, language: language))
                     .foregroundStyle(Color.ppInkGray)
             }
             .lineLimit(1)
             .minimumScaleFactor(0.78)
         } else {
-            HStack(spacing: 0) {
-                Text(language.text("BEST ", "최고 "))
+            HStack(spacing: 5) {
+                Text(language.text("BEST", "최고"))
                     .font(.ppBody(12, weight: .heavy, language: language))
                     .foregroundStyle(Color.ppWarmGray)
                 Text(game.best.formatted())
@@ -941,13 +942,19 @@ private struct BoardCell: View {
     var body: some View {
         ZStack {
             if let block {
+                // Removed instantly (no fade) so it never ghosts behind the escaping-block
+                // pop animation — that avoids the double-animation WI-8.2 warns about.
                 blockView(block)
+                    .transition(.identity)
             } else {
+                // The empty slot fades in gently as the block clears (F8), honoring reduce motion.
                 RoundedRectangle(cornerRadius: 12, style: .continuous)
                     .fill(Color.ppInkGray.opacity(0.035))
+                    .transition(.opacity)
             }
         }
         .aspectRatio(1, contentMode: .fit)
+        .animation(reduceMotion ? nil : .easeOut(duration: 0.2), value: block == nil)
         .scaleEffect(pressScale)
         .animation(reduceMotion ? nil : .spring(response: 0.2, dampingFraction: 0.62), value: isPressed)
         .modifier(BoardCellAccessibility(

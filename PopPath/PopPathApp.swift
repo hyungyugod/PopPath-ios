@@ -88,6 +88,13 @@ struct RootView: View {
                 DailyReminder.disable()
             }
         }
+        .onChange(of: soundEnabled) { _, enabled in
+            // Confirm the toggle with a short preview tone the moment sound is switched on (J5).
+            if enabled {
+                SoundEffects.shared.prepare(enabled: true)
+                SoundEffects.shared.play(.unlock, enabled: true)
+            }
+        }
         .alert(
             appLanguage.text("Daily done for today", "오늘의 도전 완료"),
             isPresented: $showDailyDoneInfo
@@ -116,7 +123,7 @@ struct RootView: View {
             HomeView(
                 best: game.best,
                 dailyBest: game.dailyBest,
-                dailyLabel: game.dailyChallenge.displayLabel,
+                dailyLabel: game.dailyChallenge.displayLabel(language: appLanguage),
                 isDailyCompletedToday: game.isDailyCompletedToday,
                 stats: game.stats,
                 achievementCount: game.stats.unlockedAchievementIDs.count,
