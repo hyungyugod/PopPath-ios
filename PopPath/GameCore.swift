@@ -1,6 +1,7 @@
 import Foundation
 import AVFoundation
 import UIKit
+import UserNotifications
 
 enum Direction: CaseIterable, Codable {
     case up
@@ -223,6 +224,34 @@ struct DailyChallenge: Equatable {
             seed: stableSeed(for: id),
             displayLabel: "\(month)/\(day)"
         )
+    }
+
+    /// Parses a `YYYYMMDD` challenge id back to a date (anchored at noon to dodge DST edges),
+    /// used to compute Daily-streak day gaps (K3).
+    static func date(fromID id: String, calendar: Calendar = .autoupdatingCurrent) -> Date? {
+        guard id.count == 8,
+              let year = Int(id.prefix(4)),
+              let month = Int(id.dropFirst(4).prefix(2)),
+              let day = Int(id.suffix(2))
+        else {
+            return nil
+        }
+        var components = DateComponents()
+        components.year = year
+        components.month = month
+        components.day = day
+        components.hour = 12
+        return calendar.date(from: components)
+    }
+
+    /// Whole-day difference between two challenge ids (`to` minus `from`), or nil if unparseable.
+    static func dayDifference(from: String, to: String, calendar: Calendar = .autoupdatingCurrent) -> Int? {
+        guard let fromDate = date(fromID: from, calendar: calendar),
+              let toDate = date(fromID: to, calendar: calendar)
+        else {
+            return nil
+        }
+        return calendar.dateComponents([.day], from: fromDate, to: toDate).day
     }
 
     private static func stableSeed(for id: String) -> UInt64 {
@@ -624,6 +653,49 @@ enum GameRules {
         case .mistBlue: "B"
         case .lavenderMist: "P"
         }
+    }
+}
+
+/// Opt-in local Daily reminder (K3). Pure on-device `UserNotifications` — no server, account,
+/// or tracking. Enabling requests authorization and, if granted, schedules a single repeating
+/// 7pm notification; disabling cancels it. All calls are safe no-ops if authorization is denied.
+enum DailyReminder {
+    static let identifier = "poppath.dailyReminder"
+    static let storageKey = "dailyReminderEnabled"
+
+    static func enable(language: AppLanguage) {
+        let center = UNUserNotificationCenter.current()
+        center.requestAuthorization(options: [.alert, .sound, .badge]) { granted, _ in
+            guard granted else { return }
+            // Authorization is async; the user may have toggled the reminder back off while
+            // the prompt was up. Re-check the live setting on the main queue before scheduling.
+            DispatchQueue.main.async {
+                guard UserDefaults.standard.bool(forKey: storageKey) else { return }
+                schedule(language: language)
+            }
+        }
+    }
+
+    static func disable() {
+        UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: [identifier])
+    }
+
+    private static func schedule(language: AppLanguage) {
+        let center = UNUserNotificationCenter.current()
+        center.removePendingNotificationRequests(withIdentifiers: [identifier])
+
+        let content = UNMutableNotificationContent()
+        content.title = "PopPath"
+        content.body = language.text(
+            "Today's Daily Challenge is ready — keep your streak going!",
+            "오늘의 도전이 준비됐어요 — 연속 기록을 이어가요!"
+        )
+        content.sound = .default
+
+        var when = DateComponents()
+        when.hour = 19
+        let trigger = UNCalendarNotificationTrigger(dateMatching: when, repeats: true)
+        center.add(UNNotificationRequest(identifier: identifier, content: content, trigger: trigger))
     }
 }
 

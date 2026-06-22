@@ -22,6 +22,8 @@ struct RoundMetrics: Codable, Equatable {
 }
 
 struct PlayerStats: Codable, Equatable {
+    static let recentScoresCap = 20
+
     var roundsPlayed = 0
     var classicRounds = 0
     var dailyRounds = 0
@@ -31,12 +33,54 @@ struct PlayerStats: Codable, Equatable {
     var totalUnlocks = 0
     var totalBoardClears = 0
     var bestScore = 0
+    /// Classic-only best, reported distinctly from the Daily best so a high Daily score never
+    /// masquerades as the Classic record (E8).
+    var bestClassicScore = 0
     var bestDailyScore = 0
     var bestChain = 0
     var bestAccuracy = 0
     var mostUnlocksInRound = 0
     var mostBoardClearsInRound = 0
+    /// Daily streak (K3). The day id of the last completed Daily and the consecutive-day count.
+    var currentStreak = 0
+    var longestStreak = 0
+    var lastDailyCompletionDayID: String?
     var unlockedAchievementIDs: [String] = []
+    /// Achievements the player has actually seen surfaced, so an unseen badge can be shown (K16).
+    var seenAchievementIDs: [String] = []
+    /// Most-recent-first capped score history for the Records trend (K11).
+    var recentScores: [Int] = []
+
+    init() {}
+
+    // Decode each field with a default so persisted stats from an earlier schema (missing the
+    // newer keys) still round-trip instead of resetting to zero.
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        roundsPlayed = try c.decodeIfPresent(Int.self, forKey: .roundsPlayed) ?? 0
+        classicRounds = try c.decodeIfPresent(Int.self, forKey: .classicRounds) ?? 0
+        dailyRounds = try c.decodeIfPresent(Int.self, forKey: .dailyRounds) ?? 0
+        totalScore = try c.decodeIfPresent(Int.self, forKey: .totalScore) ?? 0
+        totalPops = try c.decodeIfPresent(Int.self, forKey: .totalPops) ?? 0
+        totalMisses = try c.decodeIfPresent(Int.self, forKey: .totalMisses) ?? 0
+        totalUnlocks = try c.decodeIfPresent(Int.self, forKey: .totalUnlocks) ?? 0
+        totalBoardClears = try c.decodeIfPresent(Int.self, forKey: .totalBoardClears) ?? 0
+        bestScore = try c.decodeIfPresent(Int.self, forKey: .bestScore) ?? 0
+        // Pre-Sprint-7 saves have no Classic best; fall back to the legacy all-modes best so
+        // Records' "Classic Best" matches the migrated Home "BEST" instead of showing 0.
+        bestClassicScore = try c.decodeIfPresent(Int.self, forKey: .bestClassicScore) ?? bestScore
+        bestDailyScore = try c.decodeIfPresent(Int.self, forKey: .bestDailyScore) ?? 0
+        bestChain = try c.decodeIfPresent(Int.self, forKey: .bestChain) ?? 0
+        bestAccuracy = try c.decodeIfPresent(Int.self, forKey: .bestAccuracy) ?? 0
+        mostUnlocksInRound = try c.decodeIfPresent(Int.self, forKey: .mostUnlocksInRound) ?? 0
+        mostBoardClearsInRound = try c.decodeIfPresent(Int.self, forKey: .mostBoardClearsInRound) ?? 0
+        currentStreak = try c.decodeIfPresent(Int.self, forKey: .currentStreak) ?? 0
+        longestStreak = try c.decodeIfPresent(Int.self, forKey: .longestStreak) ?? 0
+        lastDailyCompletionDayID = try c.decodeIfPresent(String.self, forKey: .lastDailyCompletionDayID)
+        unlockedAchievementIDs = try c.decodeIfPresent([String].self, forKey: .unlockedAchievementIDs) ?? []
+        seenAchievementIDs = try c.decodeIfPresent([String].self, forKey: .seenAchievementIDs) ?? []
+        recentScores = try c.decodeIfPresent([Int].self, forKey: .recentScores) ?? []
+    }
 
     var averageScore: Int {
         guard roundsPlayed > 0 else { return 0 }
@@ -53,9 +97,19 @@ struct PlayerStats: Codable, Equatable {
         unlockedAchievementIDs.contains(achievement.id)
     }
 
+    var hasUnseenAchievements: Bool {
+        unlockedAchievementIDs.contains { !seenAchievementIDs.contains($0) }
+    }
+
     mutating func unlockAchievement(_ id: String) {
         guard !unlockedAchievementIDs.contains(id) else { return }
         unlockedAchievementIDs.append(id)
+    }
+
+    mutating func markUnlockedAchievementsSeen() {
+        for id in unlockedAchievementIDs where !seenAchievementIDs.contains(id) {
+            seenAchievementIDs.append(id)
+        }
     }
 
     mutating func recordRound(
@@ -68,6 +122,7 @@ struct PlayerStats: Codable, Equatable {
         switch mode {
         case .classic:
             classicRounds += 1
+            bestClassicScore = max(bestClassicScore, score)
         case .daily:
             dailyRounds += 1
             bestDailyScore = max(bestDailyScore, score)
@@ -83,6 +138,11 @@ struct PlayerStats: Codable, Equatable {
         bestAccuracy = max(bestAccuracy, metrics.accuracyPercent)
         mostUnlocksInRound = max(mostUnlocksInRound, metrics.unlocks)
         mostBoardClearsInRound = max(mostBoardClearsInRound, metrics.boardClears)
+
+        recentScores.insert(score, at: 0)
+        if recentScores.count > Self.recentScoresCap {
+            recentScores.removeLast(recentScores.count - Self.recentScoresCap)
+        }
     }
 }
 
@@ -94,20 +154,46 @@ struct Achievement: Identifiable, Equatable {
 }
 
 enum AchievementCatalog {
+    // Re-tiered (E5) so they no longer all unlock in the first round or two, with higher-
+    // horizon, cumulative, and streak milestones added (K8) plus an accuracy stake (E7).
     static let all: [Achievement] = [
         Achievement(id: "first_run", title: "First Swipe", subtitle: "Finish a round", systemImage: "flag.fill"),
         Achievement(id: "score_500", title: "Warmed Up", subtitle: "Score 500+", systemImage: "flame.fill"),
         Achievement(id: "score_1000", title: "Path Master", subtitle: "Score 1,000+", systemImage: "star.fill"),
+        Achievement(id: "score_2000", title: "Path Legend", subtitle: "Score 2,000+", systemImage: "star.circle.fill"),
         Achievement(id: "chain_5", title: "Clean Chain", subtitle: "Reach chain x5", systemImage: "link"),
         Achievement(id: "chain_10", title: "Flow State", subtitle: "Reach chain x10", systemImage: "sparkles"),
         Achievement(id: "clean_run", title: "No Misses", subtitle: "Finish with no misses", systemImage: "checkmark.seal.fill"),
+        Achievement(id: "sharp_run", title: "Sharpshooter", subtitle: "Finish at 95%+ accuracy", systemImage: "scope"),
         Achievement(id: "unlock_5", title: "Key Finder", subtitle: "Open 5 paths in one round", systemImage: "key.fill"),
         Achievement(id: "path_burst", title: "Path Burst", subtitle: "Open 3 paths with one swipe", systemImage: "bolt.fill"),
         Achievement(id: "clear_2", title: "Board Sweeper", subtitle: "Clear 2 boards in one round", systemImage: "rectangle.grid.2x2.fill"),
+        Achievement(id: "clear_4", title: "Sweep Master", subtitle: "Clear 4 boards in one round", systemImage: "square.grid.3x3.fill"),
         Achievement(id: "daily_first", title: "Daily Ritual", subtitle: "Finish a Daily Challenge", systemImage: "calendar"),
+        Achievement(id: "streak_3", title: "On a Roll", subtitle: "3-day Daily streak", systemImage: "flame"),
+        Achievement(id: "streak_7", title: "Week Warrior", subtitle: "7-day Daily streak", systemImage: "calendar.badge.checkmark"),
         Achievement(id: "ten_rounds", title: "Ten Runs", subtitle: "Finish 10 rounds", systemImage: "10.circle.fill"),
-        Achievement(id: "hundred_pops", title: "Hundred Swipes", subtitle: "Swipe 100 blocks", systemImage: "circle.grid.cross.fill")
+        Achievement(id: "fifty_rounds", title: "Half Century", subtitle: "Finish 50 rounds", systemImage: "50.circle.fill"),
+        Achievement(id: "hundred_pops", title: "Hundred Swipes", subtitle: "Swipe 100 blocks", systemImage: "circle.grid.cross.fill"),
+        Achievement(id: "total_25k", title: "Marathoner", subtitle: "Score 25,000 lifetime", systemImage: "infinity.circle.fill")
     ]
+
+    /// Achievements that can be judged from the live round state alone (monotonic during a
+    /// run) so they can be celebrated the moment they're earned (K5). Excludes anything that a
+    /// later event could invalidate (no-misses, accuracy) or that depends on round totals.
+    static func liveEligibleIDs(score: Int, maxChain: Int, metrics: RoundMetrics) -> [String] {
+        [
+            score >= 500 ? "score_500" : nil,
+            score >= 1_000 ? "score_1000" : nil,
+            score >= 2_000 ? "score_2000" : nil,
+            maxChain >= 5 ? "chain_5" : nil,
+            maxChain >= 10 ? "chain_10" : nil,
+            metrics.unlocks >= 5 ? "unlock_5" : nil,
+            metrics.bestUnlockBurst >= 3 ? "path_burst" : nil,
+            metrics.boardClears >= 2 ? "clear_2" : nil,
+            metrics.boardClears >= 4 ? "clear_4" : nil
+        ].compactMap { $0 }
+    }
 
     static func newlyUnlocked(
         score: Int,
@@ -121,15 +207,22 @@ enum AchievementCatalog {
             updatedStats.roundsPlayed >= 1 ? "first_run" : nil,
             score >= 500 ? "score_500" : nil,
             score >= 1_000 ? "score_1000" : nil,
+            score >= 2_000 ? "score_2000" : nil,
             maxChain >= 5 ? "chain_5" : nil,
             maxChain >= 10 ? "chain_10" : nil,
             metrics.misses == 0 && metrics.pops >= 12 ? "clean_run" : nil,
+            metrics.accuracyPercent >= 95 && metrics.pops >= 20 ? "sharp_run" : nil,
             metrics.unlocks >= 5 ? "unlock_5" : nil,
             metrics.bestUnlockBurst >= 3 ? "path_burst" : nil,
             metrics.boardClears >= 2 ? "clear_2" : nil,
+            metrics.boardClears >= 4 ? "clear_4" : nil,
             mode == .daily ? "daily_first" : nil,
+            updatedStats.currentStreak >= 3 ? "streak_3" : nil,
+            updatedStats.currentStreak >= 7 ? "streak_7" : nil,
             updatedStats.roundsPlayed >= 10 ? "ten_rounds" : nil,
-            updatedStats.totalPops >= 100 ? "hundred_pops" : nil
+            updatedStats.roundsPlayed >= 50 ? "fifty_rounds" : nil,
+            updatedStats.totalPops >= 100 ? "hundred_pops" : nil,
+            updatedStats.totalScore >= 25_000 ? "total_25k" : nil
         ].compactMap { $0 })
 
         return all.filter { achievement in
@@ -213,6 +306,7 @@ struct BoardToast: Identifiable, Equatable {
         case unlock
         case freshPath
         case clear
+        case celebration
     }
 
     let id = UUID()
@@ -234,6 +328,8 @@ struct BoardToast: Identifiable, Equatable {
         case "UNLOCK": return "길 열림"
         case "FRESH PATH": return "새 길!"
         case "BOARD CLEAR": return "싹쓸이!"
+        case "NEW BEST": return "최고 기록!"
+        case "ACHIEVEMENT": return "업적 달성!"
         default: return title
         }
     }
@@ -259,6 +355,9 @@ struct BoardEvent: Identifiable, Equatable {
         case freshPath
         case unlock
         case clear
+        /// New best / achievement celebration — highest priority so it surfaces over routine
+        /// reward toasts (K5/K12).
+        case celebration
 
         static func < (lhs: Kind, rhs: Kind) -> Bool {
             lhs.rawValue < rhs.rawValue
@@ -357,6 +456,10 @@ final class GameModel: ObservableObject {
     private var roundClock: RoundClock?
     private var pendingRefreshReason: BoardRefreshReason?
     private var lastMissFeedbackAt: Date?
+    /// Once-per-run guard so the live "NEW BEST!" celebration fires a single time (K12).
+    private var surfacedNewBestThisRun = false
+    /// Achievements already celebrated mid-run, so each surfaces at most once per round (K5).
+    private var liveSurfacedAchievementIDs: Set<String> = []
     /// Full window (seconds) of the current chain's decay, used as the indicator's denominator.
     private var chainDecayDuration: TimeInterval = 0
     /// Remaining chain-decay seconds captured at pause, so the indicator freezes and resume
@@ -397,8 +500,10 @@ final class GameModel: ObservableObject {
         self.board = initialBoard
         self.openPositions = GameRules.openPositions(in: initialBoard)
 
+        // `best` is now the Classic best specifically (E8). Seed it from the Classic lifetime
+        // best; the legacy stored key (historically the all-modes best) is the migration floor.
         let storedBest = UserDefaults.standard.object(forKey: Self.bestScoreStorageKey) as? Int
-        self.best = max(storedBest ?? 0, loadedStats.bestScore)
+        self.best = max(storedBest ?? 0, loadedStats.bestClassicScore)
 
         let storedDailyBest = UserDefaults.standard.object(
             forKey: Self.dailyBestStorageKey(for: challenge.id)
@@ -469,6 +574,8 @@ final class GameModel: ObservableObject {
         pendingEvents = []
         pendingRefreshReason = nil
         lastMissFeedbackAt = nil
+        surfacedNewBestThisRun = false
+        liveSurfacedAchievementIDs = []
         roundSummary = nil
 
         startTimer()
@@ -556,7 +663,7 @@ final class GameModel: ObservableObject {
         floatingScores = []
 
         let completedMetrics = roundMetrics
-        if score > best {
+        if mode == .classic, score > best {
             best = score
             UserDefaults.standard.set(score, forKey: Self.bestScoreStorageKey)
         }
@@ -568,6 +675,12 @@ final class GameModel: ObservableObject {
             maxChain: maxChain,
             metrics: completedMetrics
         )
+        // A credited Daily exit consumes the day's one attempt: lock it and advance the
+        // streak, exactly as a natural finish does, so the deterministic board can't be
+        // re-ground for a higher best.
+        if mode == .daily {
+            applyDailyStreak(to: &updatedStats)
+        }
         stats = updatedStats
         Self.saveStats(updatedStats)
         roundSummary = nil
@@ -674,6 +787,7 @@ final class GameModel: ObservableObject {
             awardUnlockBonusIfNeeded(openBeforeRemoval: openBeforeRemoval)
             resolveBoardAfterRemoval()
             queueFeedback(feedbackEvent, hapticsEnabled: hapticsEnabled, soundEnabled: soundEnabled)
+            surfaceLiveMilestones()
             // All rewards from this pop are now enqueued; surface the highest-priority one.
             drainEventQueue()
 
@@ -769,10 +883,10 @@ final class GameModel: ObservableObject {
 
         let completedMetrics = roundMetrics
         let previousStats = stats
-        let isNewBest = score > best
+        let isNewBest = mode == .classic && score > best
         let isNewDailyBest = mode == .daily && score > dailyBest
 
-        if score > best {
+        if mode == .classic, score > best {
             best = score
             UserDefaults.standard.set(score, forKey: Self.bestScoreStorageKey)
         }
@@ -785,6 +899,9 @@ final class GameModel: ObservableObject {
             maxChain: maxChain,
             metrics: completedMetrics
         )
+        if mode == .daily {
+            applyDailyStreak(to: &updatedStats)
+        }
         let unlockedAchievements = AchievementCatalog.newlyUnlocked(
             score: score,
             maxChain: maxChain,
@@ -849,6 +966,8 @@ final class GameModel: ObservableObject {
         self.pendingEvents = []
         self.pendingRefreshReason = nil
         self.lastMissFeedbackAt = nil
+        self.surfacedNewBestThisRun = false
+        self.liveSurfacedAchievementIDs = []
         self.escapingBlocks = []
         self.floatingScores = []
         self.chainDecayDeadline = nil
@@ -1326,5 +1445,103 @@ final class GameModel: ObservableObject {
         }
 
         return dailyBest
+    }
+
+    /// True once today's Daily has been completed — the UI uses it to lock further attempts
+    /// until midnight rollover (K2). It deliberately does NOT gate `newRound(mode:.daily)`, so
+    /// the direct programmatic path (and tests) still works.
+    var isDailyCompletedToday: Bool {
+        stats.lastDailyCompletionDayID == dailyChallenge.id
+    }
+
+    var currentStreak: Int { stats.currentStreak }
+
+    /// Advances the consecutive-day Daily streak (K3). Same-day re-completion is a no-op; a
+    /// one-day gap continues the streak; any larger gap restarts it at 1.
+    private func applyDailyStreak(to stats: inout PlayerStats) {
+        let dayID = dailyChallenge.id
+        guard stats.lastDailyCompletionDayID != dayID else { return }
+
+        if let last = stats.lastDailyCompletionDayID,
+           let delta = DailyChallenge.dayDifference(from: last, to: dayID, calendar: .autoupdatingCurrent),
+           delta == 1 {
+            stats.currentStreak += 1
+        } else {
+            stats.currentStreak = 1
+        }
+        stats.longestStreak = max(stats.longestStreak, stats.currentStreak)
+        stats.lastDailyCompletionDayID = dayID
+    }
+
+    /// Celebrates milestones the moment they're reached during play (K5/K12): a once-per-run
+    /// NEW BEST when the live score passes the mode's standing record, and each freshly-earned
+    /// achievement once. Authoritative persistence still happens in `finishRound`.
+    private func surfaceLiveMilestones() {
+        // At most one celebration per pop: they all share the `.celebration` kind, which the
+        // event queue coalesces, so enqueuing several at once would silently drop all but the
+        // last. NEW BEST takes priority; any freshly-eligible achievement waits for a later
+        // pop (it stays eligible since score/chain/clears only rise), and on the final pop the
+        // Result screen lists everything anyway. Guard flags flip only when actually enqueued.
+        let standing = mode == .daily ? dailyBest : best
+        if !surfacedNewBestThisRun, standing > 0, score > standing {
+            surfacedNewBestThisRun = true
+            enqueueEvent(
+                BoardEvent(
+                    kind: .celebration,
+                    title: "NEW BEST",
+                    detail: score.formatted(),
+                    style: .celebration,
+                    announce: nil,
+                    duration: 1_000_000_000
+                )
+            )
+            return
+        }
+
+        for id in AchievementCatalog.liveEligibleIDs(score: score, maxChain: maxChain, metrics: roundMetrics)
+        where !stats.unlockedAchievementIDs.contains(id) && !liveSurfacedAchievementIDs.contains(id) {
+            liveSurfacedAchievementIDs.insert(id)
+            enqueueEvent(
+                BoardEvent(
+                    kind: .celebration,
+                    title: "ACHIEVEMENT",
+                    detail: "",
+                    style: .celebration,
+                    announce: nil,
+                    duration: 950_000_000
+                )
+            )
+            return
+        }
+    }
+
+    /// Marks every unlocked achievement as seen, clearing the unseen badge (K16).
+    func markAchievementsSeen() {
+        guard stats.hasUnseenAchievements else { return }
+        var updated = stats
+        updated.markUnlockedAchievementsSeen()
+        stats = updated
+        Self.saveStats(updated)
+    }
+
+    /// Clears all locally persisted progress and in-memory state (K9). Called from a confirmed
+    /// Settings action; `hasSeenTutorial` (an @AppStorage flag) is cleared by the caller.
+    func resetLocalData() {
+        let defaults = UserDefaults.standard
+        defaults.removeObject(forKey: Self.bestScoreStorageKey)
+        defaults.removeObject(forKey: Self.playerStatsStorageKey)
+        defaults.removeObject(forKey: Self.recentBoardSignaturesStorageKey)
+        for key in defaults.dictionaryRepresentation().keys where key.hasPrefix("dailyBest.") {
+            defaults.removeObject(forKey: key)
+        }
+
+        stats = PlayerStats()
+        best = 0
+        dailyBest = 0
+        recentBoardSignatures = []
+        boardToast = nil
+        pendingEvents = []
+        liveSurfacedAchievementIDs = []
+        surfacedNewBestThisRun = false
     }
 }

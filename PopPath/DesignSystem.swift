@@ -153,6 +153,22 @@ extension View {
     func ppScreenPadding() -> some View {
         padding(.horizontal, 26)
     }
+
+    /// A left-edge swipe-right that triggers `action` (a back affordance for the manual route
+    /// switch, K15). Lower-priority `.gesture` so vertical scrolling still wins; only a clearly
+    /// horizontal drag starting near the left edge resolves to a back.
+    func edgeSwipeBack(perform action: @escaping () -> Void) -> some View {
+        gesture(
+            DragGesture(minimumDistance: 20)
+                .onEnded { value in
+                    if value.startLocation.x < 28,
+                       value.translation.width > 70,
+                       abs(value.translation.height) < 60 {
+                        action()
+                    }
+                }
+        )
+    }
 }
 
 struct PrimaryPopButton: View {

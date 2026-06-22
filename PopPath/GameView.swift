@@ -5,9 +5,10 @@ struct GameView: View {
     @Environment(\.appLanguage) private var language
 
     @ObservedObject var game: GameModel
-    let soundEnabled: Bool
-    let hapticsEnabled: Bool
-    let colorAssist: Bool
+    // Bindings (not values) so the paused overlay can flip them mid-run (K17).
+    @Binding var soundEnabled: Bool
+    @Binding var hapticsEnabled: Bool
+    @Binding var colorAssist: Bool
     let reduceMotion: Bool
     let onExit: () -> Void
 
@@ -51,6 +52,9 @@ struct GameView: View {
         .overlay {
             if showPausedOverlay {
                 PausedOverlay(
+                    soundEnabled: $soundEnabled,
+                    hapticsEnabled: $hapticsEnabled,
+                    colorAssist: $colorAssist,
                     onResume: {
                         game.resume()
                         showPausedOverlay = false
@@ -121,6 +125,21 @@ struct GameView: View {
         showExitConfirm = true
     }
 
+    // Live difficulty/level pip (K19), reading the WI-4.1 source of truth. Updates as the
+    // round's elapsed time and board clears raise the level; the HUD re-renders each tick.
+    private var difficultyPip: some View {
+        let level = game.currentDifficultyLevel
+        return HStack(spacing: 4) {
+            ForEach(0..<5, id: \.self) { index in
+                Capsule(style: .continuous)
+                    .fill(index <= level ? Color.ppMintText : Color.ppInkGray.opacity(0.15))
+                    .frame(width: index == level ? 14 : 6, height: 5)
+            }
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(language.text("Difficulty level \(level + 1) of 5", "난이도 \(level + 1) / 5"))
+    }
+
     private var topBar: some View {
         HStack(spacing: 10) {
             Button(action: requestExit) {
@@ -138,6 +157,10 @@ struct GameView: View {
             }
             .buttonStyle(.plain)
             .accessibilityLabel(language.text("Exit game", "게임 나가기"))
+
+            Spacer()
+
+            difficultyPip
 
             Spacer()
 
@@ -236,6 +259,9 @@ struct GameView: View {
 private struct PausedOverlay: View {
     @Environment(\.appLanguage) private var language
 
+    @Binding var soundEnabled: Bool
+    @Binding var hapticsEnabled: Bool
+    @Binding var colorAssist: Bool
     let onResume: () -> Void
     let onQuit: () -> Void
 
@@ -249,6 +275,14 @@ private struct PausedOverlay: View {
                     .font(.ppDisplay(30, weight: .bold, language: language))
                     .foregroundStyle(Color.ppWarmCream)
                     .padding(.bottom, 6)
+
+                // In-game quick settings so common toggles can change mid-run (K17).
+                VStack(spacing: 10) {
+                    PausedToggle(label: language.text("Sound", "사운드"), systemImage: "speaker.wave.2.fill", isOn: $soundEnabled)
+                    PausedToggle(label: language.text("Haptics", "진동"), systemImage: "iphone.radiowaves.left.and.right", isOn: $hapticsEnabled)
+                    PausedToggle(label: language.text("Open-Path Highlight", "열린 길 강조"), systemImage: "sparkles", isOn: $colorAssist)
+                }
+                .padding(.bottom, 6)
 
                 PrimaryPopButton(language.text("Resume", "계속하기"), systemImage: "play.fill", action: onResume)
 
@@ -269,6 +303,48 @@ private struct PausedOverlay: View {
             .padding(28)
             .frame(maxWidth: 320)
         }
+    }
+}
+
+/// Compact toggle styled for the dark paused overlay.
+private struct PausedToggle: View {
+    @Environment(\.appLanguage) private var language
+    let label: String
+    let systemImage: String
+    @Binding var isOn: Bool
+
+    var body: some View {
+        Button {
+            withAnimation(.spring(response: 0.26, dampingFraction: 0.8)) { isOn.toggle() }
+        } label: {
+            HStack(spacing: 12) {
+                Image(systemName: systemImage)
+                    .font(.system(size: 15, weight: .semibold, design: .rounded))
+                    .foregroundStyle(Color.ppWarmCream.opacity(0.9))
+                    .frame(width: 22)
+                Text(label)
+                    .font(.ppDisplay(15, weight: .semibold, language: language))
+                    .foregroundStyle(Color.ppWarmCream)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+                Spacer(minLength: 10)
+                Capsule(style: .continuous)
+                    .fill(isOn ? Color.ppFreshMint : Color.ppWarmCream.opacity(0.25))
+                    .frame(width: 44, height: 26)
+                    .overlay(alignment: isOn ? .trailing : .leading) {
+                        Circle().fill(Color.white).frame(width: 20, height: 20).padding(3)
+                    }
+            }
+            .padding(.horizontal, 16)
+            .frame(height: 44)
+            .frame(maxWidth: .infinity)
+            .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(Color.ppWarmCream.opacity(0.1)))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(label)
+        .accessibilityValue(isOn ? language.text("On", "켬") : language.text("Off", "끔"))
+        .accessibilityAddTraits(.isToggle)
     }
 }
 
@@ -998,6 +1074,7 @@ private struct BoardToastView: View {
         case .unlock: "key.fill"
         case .freshPath: "shuffle"
         case .clear: "checkmark"
+        case .celebration: "crown.fill"
         }
     }
 
@@ -1011,14 +1088,14 @@ private struct BoardToastView: View {
 
     private var foregroundColor: Color {
         switch toast.style {
-        case .chain, .unlock, .clear: .ppMintButtonText
+        case .chain, .unlock, .clear, .celebration: .ppMintButtonText
         case .freshPath: .ppMintText
         }
     }
 
     private var backgroundColor: Color {
         switch toast.style {
-        case .chain: .ppSoftCoral
+        case .chain, .celebration: .ppSoftCoral
         case .unlock: .ppFreshMint
         case .freshPath, .clear: .ppFreshMint
         }
@@ -1026,7 +1103,7 @@ private struct BoardToastView: View {
 
     private var shadowColor: Color {
         switch toast.style {
-        case .chain: Color.ppSoftCoral.opacity(0.3)
+        case .chain, .celebration: Color.ppSoftCoral.opacity(0.3)
         case .unlock: Color.ppMintText.opacity(0.25)
         case .freshPath, .clear: Color.ppMintText.opacity(0.22)
         }

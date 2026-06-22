@@ -6,6 +6,7 @@ struct HomeView: View {
     let best: Int
     let dailyBest: Int
     let dailyLabel: String
+    let isDailyCompletedToday: Bool
     let stats: PlayerStats
     let achievementCount: Int
     let soundEnabled: Bool
@@ -14,6 +15,19 @@ struct HomeView: View {
     let onDaily: () -> Void
     let onSettings: () -> Void
     let onRecords: () -> Void
+
+    private var isFirstTime: Bool { stats.roundsPlayed == 0 }
+
+    private var dailyDetail: String {
+        if isDailyCompletedToday {
+            let streak = stats.currentStreak > 0 ? " · 🔥\(stats.currentStreak)" : ""
+            return language.text("Done today", "오늘 완료") + streak
+        }
+        if dailyBest > 0 {
+            return "\(language.text("BEST", "최고")) \(dailyBest.formatted())"
+        }
+        return "\(language.text("TODAY", "오늘")) \(dailyLabel)"
+    }
 
     var body: some View {
         GeometryReader { proxy in
@@ -46,24 +60,36 @@ struct HomeView: View {
 
                 Spacer(minLength: isShort ? 20 : 30)
 
-                PillStat(label: language.text("BEST", "최고"), value: best.formatted())
-                    .padding(.bottom, isShort ? 10 : 12)
+                if isFirstTime {
+                    // Welcoming zero-state instead of a row of zeroes (K7).
+                    Text(language.text("Your first run awaits — swipe, chain, pop!", "첫 판이 기다려요 — 밀고, 잇고, 팡!"))
+                        .font(.ppDisplay(15, weight: .medium, language: language))
+                        .foregroundStyle(Color.ppMintText)
+                        .multilineTextAlignment(.center)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(.horizontal, 8)
+                        .padding(.bottom, isShort ? 14 : 18)
+                } else {
+                    PillStat(label: language.text("BEST", "최고"), value: best.formatted())
+                        .padding(.bottom, isShort ? 10 : 12)
 
-                HStack(spacing: 8) {
-                    MiniRecordStat(label: language.text("RUNS", "판수"), value: stats.roundsPlayed.formatted())
-                    MiniRecordStat(label: language.text("AVG", "평균"), value: stats.averageScore.formatted())
-                    MiniRecordStat(label: language.text("ACH", "업적"), value: "\(achievementCount)/\(AchievementCatalog.all.count)")
+                    HStack(spacing: 8) {
+                        MiniRecordStat(label: language.text("RUNS", "판수"), value: stats.roundsPlayed.formatted())
+                        MiniRecordStat(label: language.text("AVG", "평균"), value: stats.averageScore.formatted())
+                        MiniRecordStat(
+                            label: language.text("STREAK", "연속"),
+                            value: stats.currentStreak > 0 ? "🔥\(stats.currentStreak)" : "—"
+                        )
+                    }
+                    .padding(.bottom, isShort ? 14 : 18)
                 }
-                .padding(.bottom, isShort ? 14 : 18)
 
                 PrimaryPopButton(language.text("Play", "플레이"), systemImage: "play.fill", action: onPlay)
 
                 SecondaryPopButton(
                     title: language.text("Daily Challenge", "오늘의 길"),
-                    detail: dailyBest > 0
-                        ? "\(language.text("BEST", "최고")) \(dailyBest.formatted())"
-                        : "\(language.text("TODAY", "오늘")) \(dailyLabel)",
-                    systemImage: "calendar",
+                    detail: dailyDetail,
+                    systemImage: isDailyCompletedToday ? "checkmark.seal.fill" : "calendar",
                     action: onDaily
                 )
                 .padding(.top, isShort ? 10 : 12)
@@ -74,6 +100,16 @@ struct HomeView: View {
                     systemImage: "chart.bar.fill",
                     action: onRecords
                 )
+                .overlay(alignment: .topTrailing) {
+                    if stats.hasUnseenAchievements {
+                        Circle()
+                            .fill(Color.ppSoftCoral)
+                            .frame(width: 11, height: 11)
+                            .overlay(Circle().stroke(Color.ppWarmCream, lineWidth: 2))
+                            .offset(x: 4, y: -4)
+                            .accessibilityLabel(language.text("New achievement", "새 업적"))
+                    }
+                }
                 .padding(.top, isShort ? 8 : 10)
 
                 HStack(spacing: 12) {
@@ -179,6 +215,7 @@ struct ResultView: View {
     @Environment(\.appLanguage) private var language
 
     let summary: RoundSummary
+    var canRetry: Bool = true
     let onRetry: () -> Void
     let onHome: () -> Void
 
@@ -239,6 +276,22 @@ struct ResultView: View {
                     .padding(.top, 14)
             }
 
+            if summary.mode == .daily, summary.lifetimeStats.currentStreak > 0 {
+                Label(
+                    language.text(
+                        "\(summary.lifetimeStats.currentStreak)-day streak",
+                        "\(summary.lifetimeStats.currentStreak)일 연속"
+                    ),
+                    systemImage: "flame.fill"
+                )
+                    .font(.ppDisplay(14, weight: .semibold, language: language))
+                    .foregroundStyle(Color.ppSoftCoral)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 8)
+                    .background(Capsule(style: .continuous).fill(Color.ppSoftCoral.opacity(0.15)))
+                    .padding(.top, 12)
+            }
+
             HStack(spacing: 10) {
                 ResultStatCard(
                     value: resultBestValue,
@@ -255,7 +308,7 @@ struct ResultView: View {
                 ResultStatCard(value: "\(summary.metrics.unlocks)", label: language.text("UNLOCKS", "길 열림"), valueColor: .ppMintText)
                 ResultStatCard(value: "\(summary.metrics.accuracyPercent)%", label: language.text("ACCURACY", "정확도"))
                 ResultStatCard(value: "\(summary.metrics.boardClears)", label: language.text("CLEARS", "싹쓸이"))
-                ResultStatCard(value: "LV \(summary.metrics.difficultyPeak + 1)", label: language.text("PEAK", "최고 단계"))
+                ResultStatCard(value: "\(summary.metrics.difficultyPeak + 1) / 5", label: language.text("PEAK LV", "최고 단계"))
             }
             .padding(.top, 10)
 
@@ -283,16 +336,26 @@ struct ResultView: View {
                     ResultActionButton(title: language.text("Share", "공유"), systemImage: "square.and.arrow.up", style: .secondary)
                 }
 
-                Button(action: onRetry) {
-                    ResultActionButton(title: language.text("Retry", "다시"), systemImage: "arrow.clockwise", style: .primary)
+                if canRetry {
+                    Button(action: onRetry) {
+                        ResultActionButton(title: language.text("Retry", "다시"), systemImage: "arrow.clockwise", style: .primary)
+                    }
+                    .buttonStyle(.plain)
+                } else {
+                    // One-shot Daily: no replay today, so the primary action returns Home (K13).
+                    Button(action: onHome) {
+                        ResultActionButton(title: language.text("Home", "홈"), systemImage: "house.fill", style: .primary)
+                    }
+                    .buttonStyle(.plain)
                 }
-                .buttonStyle(.plain)
             }
 
-            Button(language.text("Home", "홈"), action: onHome)
-                .font(.ppDisplay(15, weight: .semibold, language: language))
-                .foregroundStyle(Color.ppWarmGray)
-                .lineLimit(1)
+            if canRetry {
+                Button(language.text("Home", "홈"), action: onHome)
+                    .font(.ppDisplay(15, weight: .semibold, language: language))
+                    .foregroundStyle(Color.ppWarmGray)
+                    .lineLimit(1)
+            }
         }
         .ppScreenPadding()
         .padding(.top, 12)
@@ -436,9 +499,10 @@ struct RecordsView: View {
                 .padding(.top, 18)
                 .padding(.bottom, 22)
 
+                // Classic and Daily bests reported distinctly (E8).
                 HStack(spacing: 10) {
-                    ResultStatCard(value: stats.bestScore.formatted(), label: language.text("BEST", "최고"))
-                    ResultStatCard(value: "\(unlockedCount)/\(achievements.count)", label: language.text("ACHIEVEMENTS", "업적"), valueColor: .ppMintText)
+                    ResultStatCard(value: stats.bestClassicScore.formatted(), label: language.text("CLASSIC BEST", "클래식 최고"))
+                    ResultStatCard(value: stats.bestDailyScore.formatted(), label: language.text("DAILY BEST", "오늘 최고"), valueColor: .ppMintText)
                 }
 
                 LazyVGrid(
@@ -452,9 +516,14 @@ struct RecordsView: View {
                     RecordMetricTile(title: language.text("Swipes", "스와이프"), value: stats.totalPops.formatted(), icon: "hand.draw.fill")
                     RecordMetricTile(title: language.text("Unlocks", "길 열림"), value: stats.totalUnlocks.formatted(), icon: "key.fill")
                     RecordMetricTile(title: language.text("Board Clears", "싹쓸이"), value: stats.totalBoardClears.formatted(), icon: "rectangle.grid.2x2.fill")
-                    RecordMetricTile(title: language.text("Daily Best", "오늘 최고"), value: stats.bestDailyScore.formatted(), icon: "calendar")
+                    RecordMetricTile(title: language.text("Best Streak", "최고 연속"), value: "🔥\(stats.longestStreak)", icon: "flame.fill")
                 }
                 .padding(.top, 12)
+
+                if stats.recentScores.count >= 2 {
+                    RecentScoresTrend(scores: stats.recentScores)
+                        .padding(.top, 12)
+                }
 
                 VStack(spacing: 8) {
                     Text(language.text("ACHIEVEMENTS", "업적"))
@@ -475,6 +544,43 @@ struct RecordsView: View {
             }
         }
         .ppScreenPadding()
+    }
+}
+
+/// A compact bar trend of the most recent runs (K11). `scores` is most-recent-first; bars are
+/// drawn oldest→newest left to right.
+private struct RecentScoresTrend: View {
+    @Environment(\.appLanguage) private var language
+    let scores: [Int]
+
+    var body: some View {
+        let ordered = Array(scores.reversed())
+        let peak = max(ordered.max() ?? 1, 1)
+
+        VStack(alignment: .leading, spacing: 10) {
+            Text(language.text("RECENT RUNS", "최근 기록"))
+                .font(.ppBody(11, weight: .heavy, language: language))
+                .tracking(language == .korean ? 0 : 0.8)
+                .foregroundStyle(Color.ppWarmGray)
+
+            HStack(alignment: .bottom, spacing: 4) {
+                ForEach(Array(ordered.enumerated()), id: \.offset) { index, score in
+                    Capsule(style: .continuous)
+                        .fill(index == ordered.count - 1 ? Color.ppMintText : Color.ppFreshMint)
+                        .frame(height: max(6, CGFloat(score) / CGFloat(peak) * 56))
+                        .frame(maxWidth: .infinity)
+                }
+            }
+            .frame(height: 56, alignment: .bottom)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(16)
+        .background(
+            RoundedRectangle(cornerRadius: 18, style: .continuous).fill(Color.ppSoftSage)
+        )
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(language.text("Recent runs trend", "최근 기록 추이"))
+        .accessibilityValue(language.text("Latest \(scores.first ?? 0)", "최근 \(scores.first ?? 0)"))
     }
 }
 
@@ -584,24 +690,38 @@ private extension Achievement {
             return "워밍업"
         case "score_1000":
             return "길 고수"
+        case "score_2000":
+            return "길 전설"
         case "chain_5":
             return "체인 착착"
         case "chain_10":
             return "팡팡 모드"
         case "clean_run":
             return "노 미스"
+        case "sharp_run":
+            return "명사수"
         case "unlock_5":
             return "길잡이"
         case "path_burst":
             return "길이 팡!"
         case "clear_2":
             return "싹쓸이"
+        case "clear_4":
+            return "싹쓸이 달인"
         case "daily_first":
             return "오늘도 출석"
+        case "streak_3":
+            return "연속 3일"
+        case "streak_7":
+            return "한 주 완주"
         case "ten_rounds":
             return "열 판째!"
+        case "fifty_rounds":
+            return "50판 클럽"
         case "hundred_pops":
             return "백 번 스와이프"
+        case "total_25k":
+            return "마라토너"
         default:
             return title
         }
@@ -617,24 +737,38 @@ private extension Achievement {
             return "500점 넘기기"
         case "score_1000":
             return "1,000점 넘기기"
+        case "score_2000":
+            return "2,000점 넘기기"
         case "chain_5":
             return "체인 x5 달성"
         case "chain_10":
             return "체인 x10 달성"
         case "clean_run":
             return "실수 없이 마무리"
+        case "sharp_run":
+            return "정확도 95% 이상"
         case "unlock_5":
             return "한 판에서 길 5개 열기"
         case "path_burst":
             return "한 번에 길 3개 열기"
         case "clear_2":
             return "한 판에서 2번 싹쓸이"
+        case "clear_4":
+            return "한 판에서 4번 싹쓸이"
         case "daily_first":
             return "오늘의 길 마무리"
+        case "streak_3":
+            return "데일리 3일 연속"
+        case "streak_7":
+            return "데일리 7일 연속"
         case "ten_rounds":
             return "10판 마무리"
+        case "fifty_rounds":
+            return "50판 마무리"
         case "hundred_pops":
             return "블록 100개 스와이프"
+        case "total_25k":
+            return "누적 25,000점"
         default:
             return subtitle
         }
@@ -955,9 +1089,13 @@ struct SettingsView: View {
     @Binding var hapticsEnabled: Bool
     @Binding var colorAssist: Bool
     @Binding var reduceMotion: Bool
+    @Binding var dailyReminderEnabled: Bool
     @Binding var language: AppLanguage
     let onHowToPlay: () -> Void
+    let onResetData: () -> Void
     let onBack: () -> Void
+
+    @State private var showResetConfirm = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -1008,6 +1146,11 @@ struct SettingsView: View {
                         subtitle: appLanguage.text("Keep motion calm and minimal", "움직임을 차분하게 줄여요"),
                         isOn: $reduceMotion
                     )
+                    SettingRow(
+                        title: appLanguage.text("Daily Reminder", "데일리 알림"),
+                        subtitle: appLanguage.text("A nudge each evening to keep your streak", "매일 저녁 연속 기록 알림을 보내요"),
+                        isOn: $dailyReminderEnabled
+                    )
 
                     // Replayable tutorial entry, reachable regardless of hasSeenTutorial (H5).
                     SettingsLinkRow(
@@ -1015,6 +1158,16 @@ struct SettingsView: View {
                         subtitle: appLanguage.text("Replay the tutorial", "튜토리얼 다시 보기"),
                         systemImage: "questionmark.circle.fill",
                         action: onHowToPlay
+                    )
+
+                    // Confirmed local-data wipe (K9).
+                    SettingsLinkRow(
+                        title: appLanguage.text("Reset data", "데이터 초기화"),
+                        subtitle: appLanguage.text("Clear scores, records, and achievements", "점수·기록·업적을 모두 지워요"),
+                        systemImage: "trash.fill",
+                        tint: .ppSoftCoral,
+                        titleColor: .ppSoftCoral,
+                        action: { showResetConfirm = true }
                     )
 
                     Text("PopPath! v0")
@@ -1026,6 +1179,19 @@ struct SettingsView: View {
             }
         }
         .ppScreenPadding()
+        .confirmationDialog(
+            appLanguage.text("Reset all local data?", "모든 데이터를 지울까요?"),
+            isPresented: $showResetConfirm,
+            titleVisibility: .visible
+        ) {
+            Button(appLanguage.text("Reset", "초기화"), role: .destructive, action: onResetData)
+            Button(appLanguage.text("Cancel", "취소"), role: .cancel) { }
+        } message: {
+            Text(appLanguage.text(
+                "Scores, records, achievements, and streak will be erased. This can't be undone.",
+                "점수·기록·업적·연속 기록이 모두 사라져요. 되돌릴 수 없어요."
+            ))
+        }
     }
 }
 
@@ -1154,6 +1320,8 @@ private struct SettingsLinkRow: View {
     let title: String
     let subtitle: String
     let systemImage: String
+    var tint: Color = .ppMintText
+    var titleColor: Color = .ppInkGray
     let action: () -> Void
 
     var body: some View {
@@ -1162,7 +1330,7 @@ private struct SettingsLinkRow: View {
                 VStack(alignment: .leading, spacing: 3) {
                     Text(title)
                         .font(.ppDisplay(17, weight: .semibold))
-                        .foregroundStyle(Color.ppInkGray)
+                        .foregroundStyle(titleColor)
                         .fixedSize(horizontal: false, vertical: true)
                     Text(subtitle)
                         .font(.ppBody(13, weight: .medium))
@@ -1174,7 +1342,7 @@ private struct SettingsLinkRow: View {
 
                 Image(systemName: systemImage)
                     .font(.system(size: 20, weight: .semibold, design: .rounded))
-                    .foregroundStyle(Color.ppMintText)
+                    .foregroundStyle(tint)
             }
             .padding(.horizontal, 18)
             .padding(.vertical, 16)

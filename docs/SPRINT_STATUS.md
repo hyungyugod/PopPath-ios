@@ -103,6 +103,16 @@ Status: Complete
 - Added a replayable "How to play" entry in Settings that returns to Settings when finished, reachable regardless of `hasSeenTutorial` (WI-6.2, H5).
 - Added tests for the taught copy (arrow + edge) and that each step's required flick matches its displayed arrow.
 
+## Sprint 7: Retention, meta & navigation depth
+
+Status: Complete
+
+- Daily streak (WI-7.1): consecutive-day streak tracked from the DailyChallenge day ids, surfaced on Home/Result, with an opt-in local evening reminder (no server/account) toggled from Settings and welcoming first-run empty states.
+- One-shot Daily (WI-7.2): today's Daily is a single attempt; once finished, Home routes to an explainer (seeded/shared, once-per-day, with result + streak) instead of re-rolling, and the Result Retry returns Home. The direct `newRound(mode:.daily)` path stays open.
+- Live celebration & meta (WI-7.3): a "NEW BEST!" toast and per-achievement celebration surface mid-run via the event queue; the achievement catalog is re-tiered with cumulative/streak/accuracy milestones; Classic and Daily bests now report distinctly; the PEAK tile shows "n / 5"; an unseen-achievement badge appears until Records is opened.
+- Tools & navigation (WI-7.4): confirmed "Reset data" wipes all local storage; Records gains a recent-runs trend and longest-streak; the pause overlay carries Sound/Haptics/Open-Path toggles for mid-run changes; an edge-swipe-back affordance is added to secondary screens; and a live difficulty pip sits in the HUD.
+- `PlayerStats` gained decode-safe Codable so older saves migrate without losing progress. Added tests for streak math, one-shot lockout, mode-split bests, live new-best, reset, progressive achievements, and partial-JSON decode.
+
 ## Remaining Owner-Side Release Inputs
 
 - Apple Developer Team/signing account for device archive and App Store upload.

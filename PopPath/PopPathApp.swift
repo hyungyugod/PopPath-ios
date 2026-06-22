@@ -38,7 +38,9 @@ struct RootView: View {
     // storage key is unchanged, so anyone who turned it off keeps their choice.
     @AppStorage("colorAssist") private var colorAssist = true
     @AppStorage("reduceMotion") private var reduceMotion = false
+    @AppStorage("dailyReminderEnabled") private var dailyReminderEnabled = false
     @AppStorage("appLanguage") private var appLanguageRaw = AppLanguage.english.rawValue
+    @State private var showDailyDoneInfo = false
     @Environment(\.accessibilityReduceMotion) private var systemReduceMotion
     /// Effective reduce motion is the system setting OR the in-app toggle, derived once here
     /// and threaded into every animation site (G2), so honoring iOS Reduce Motion never
@@ -79,6 +81,32 @@ struct RootView: View {
                 game.handleForeground()
             }
         }
+        .onChange(of: dailyReminderEnabled) { _, enabled in
+            if enabled {
+                DailyReminder.enable(language: appLanguage)
+            } else {
+                DailyReminder.disable()
+            }
+        }
+        .alert(
+            appLanguage.text("Daily done for today", "오늘의 도전 완료"),
+            isPresented: $showDailyDoneInfo
+        ) {
+            Button(appLanguage.text("OK", "확인"), role: .cancel) { }
+        } message: {
+            Text(dailyDoneMessage)
+        }
+    }
+
+    private var dailyDoneMessage: String {
+        // Explains the seeded, shared, one-attempt nature of the Daily (K18) and surfaces the
+        // result/streak (K2).
+        let best = game.dailyBest
+        let streak = game.currentStreak
+        return appLanguage.text(
+            "Everyone plays the same Daily board, once per day. Today: best \(best), streak \(streak). A fresh challenge arrives at midnight.",
+            "모두가 같은 오늘의 보드를 하루 한 번 플레이해요. 오늘: 최고 \(best), 연속 \(streak). 자정에 새 도전이 열려요."
+        )
     }
 
     @ViewBuilder
@@ -89,6 +117,7 @@ struct RootView: View {
                 best: game.best,
                 dailyBest: game.dailyBest,
                 dailyLabel: game.dailyChallenge.displayLabel,
+                isDailyCompletedToday: game.isDailyCompletedToday,
                 stats: game.stats,
                 achievementCount: game.stats.unlockedAchievementIDs.count,
                 soundEnabled: soundEnabled,
@@ -101,9 +130,11 @@ struct RootView: View {
                     }
                 },
                 onDaily: {
-                    // First-time Daily players are taught first instead of being silently
-                    // opted out of onboarding (H3); the tutorial then starts the Daily run.
-                    if hasSeenTutorial {
+                    // One-shot per day (K2): once today's Daily is done, show the explainer/
+                    // result instead of re-rolling. First-time players are taught first (H3).
+                    if game.isDailyCompletedToday {
+                        showDailyDoneInfo = true
+                    } else if hasSeenTutorial {
                         startGame(mode: .daily)
                     } else {
                         presentTutorial(context: .play(.daily))
@@ -129,9 +160,9 @@ struct RootView: View {
         case .game:
             GameView(
                 game: game,
-                soundEnabled: soundEnabled,
-                hapticsEnabled: hapticsEnabled,
-                colorAssist: colorAssist,
+                soundEnabled: $soundEnabled,
+                hapticsEnabled: $hapticsEnabled,
+                colorAssist: $colorAssist,
                 reduceMotion: effectiveReduceMotion,
                 onExit: {
                     // GameView already finalized the round (credited exit); just route home.
@@ -141,39 +172,41 @@ struct RootView: View {
                 }
             )
         case .result:
+            let goHome = { withAnimation(.spring(response: 0.38, dampingFraction: 0.86)) { route = .home } }
             ResultView(
                 summary: game.roundSummary ?? fallbackSummary,
+                // A one-shot Daily can't be replayed today — Retry returns Home instead (K13).
+                canRetry: (game.roundSummary?.mode ?? game.mode) != .daily,
                 onRetry: { startGame(mode: game.roundSummary?.mode ?? game.mode) },
-                onHome: {
-                    withAnimation(.spring(response: 0.38, dampingFraction: 0.86)) {
-                        route = .home
-                    }
-                }
+                onHome: goHome
             )
+            .edgeSwipeBack(perform: goHome)
         case .records:
+            let goHome = { withAnimation(.spring(response: 0.38, dampingFraction: 0.86)) { route = .home } }
             RecordsView(
                 stats: game.stats,
                 achievements: AchievementCatalog.all,
-                onBack: {
-                    withAnimation(.spring(response: 0.38, dampingFraction: 0.86)) {
-                        route = .home
-                    }
-                }
+                onBack: goHome
             )
+            .onAppear { game.markAchievementsSeen() }
+            .edgeSwipeBack(perform: goHome)
         case .settings:
+            let goHome = { withAnimation(.spring(response: 0.38, dampingFraction: 0.86)) { route = .home } }
             SettingsView(
                 soundEnabled: $soundEnabled,
                 hapticsEnabled: $hapticsEnabled,
                 colorAssist: $colorAssist,
                 reduceMotion: $reduceMotion,
+                dailyReminderEnabled: $dailyReminderEnabled,
                 language: appLanguageBinding,
                 onHowToPlay: { presentTutorial(context: .returnTo(.settings)) },
-                onBack: {
-                    withAnimation(.spring(response: 0.38, dampingFraction: 0.86)) {
-                        route = .home
-                    }
-                }
+                onResetData: {
+                    game.resetLocalData()
+                    hasSeenTutorial = false
+                },
+                onBack: goHome
             )
+            .edgeSwipeBack(perform: goHome)
         }
     }
 

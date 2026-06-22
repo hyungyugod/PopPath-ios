@@ -878,6 +878,175 @@ final class GameRulesTests: XCTestCase {
         }
     }
 
+    // MARK: - Sprint 7: retention, meta & navigation
+
+    func testPlayerStatsDecodesPartialJSONWithDefaults() {
+        // Persisted stats from an earlier schema (missing the newer keys) must round-trip with
+        // defaults rather than failing to decode and wiping progress.
+        let json = Data(#"{"roundsPlayed":5,"bestScore":123,"unlockedAchievementIDs":["first_run"]}"#.utf8)
+        let stats = try? JSONDecoder().decode(PlayerStats.self, from: json)
+
+        XCTAssertEqual(stats?.roundsPlayed, 5)
+        XCTAssertEqual(stats?.bestScore, 123)
+        XCTAssertEqual(stats?.unlockedAchievementIDs, ["first_run"])
+        XCTAssertEqual(stats?.currentStreak, 0)
+        XCTAssertEqual(stats?.recentScores, [])
+        XCTAssertNil(stats?.lastDailyCompletionDayID)
+        // Migration: a save without the Classic-best key backfills from the legacy best so
+        // Records and Home agree rather than showing 0.
+        XCTAssertEqual(stats?.bestClassicScore, 123)
+    }
+
+    @MainActor
+    func testCreditedDailyExitLocksAndAdvancesStreak() {
+        let model = GameModel(makeInitialBoard: false)
+        var board = GameRules.emptyBoard()
+        board[3][5] = PopBlock(direction: .right, tone: .mistBlue)
+        board[0][0] = PopBlock(direction: .up, tone: .mistBlue)
+
+        model.loadBoardForTesting(board, mode: .daily)
+        model.swipe(row: 3, column: 5, hapticsEnabled: false)
+        model.creditAndEndRun()
+
+        // A credited mid-run Daily exit consumes the day's attempt: it locks and advances the
+        // streak so the deterministic board can't be re-ground for a higher best.
+        XCTAssertTrue(model.isDailyCompletedToday)
+        XCTAssertEqual(model.currentStreak, 1)
+    }
+
+    @MainActor
+    func testClassicAndDailyBestReportedSeparately() {
+        let model = GameModel(makeInitialBoard: false)
+
+        // A small Classic round sets the Classic best to 10.
+        var classicBoard = GameRules.emptyBoard()
+        classicBoard[3][5] = PopBlock(direction: .right, tone: .mistBlue)
+        classicBoard[0][0] = PopBlock(direction: .up, tone: .mistBlue)
+        classicBoard[6][0] = PopBlock(direction: .down, tone: .lavenderMist)
+        model.loadBoardForTesting(classicBoard, mode: .classic)
+        model.swipe(row: 3, column: 5, hapticsEnabled: false)
+        model.finishRound(hapticsEnabled: false, soundEnabled: false)
+        XCTAssertEqual(model.best, 10)
+
+        // A bigger Daily round must not bleed into the Classic best (E8).
+        var dailyBoard = GameRules.emptyBoard()
+        dailyBoard[3][5] = PopBlock(direction: .right, tone: .mistBlue)
+        dailyBoard[0][0] = PopBlock(direction: .up, tone: .mistBlue)
+        dailyBoard[6][0] = PopBlock(direction: .down, tone: .lavenderMist)
+        model.loadBoardForTesting(dailyBoard, mode: .daily)
+        model.swipe(row: 3, column: 5, hapticsEnabled: false)
+        model.swipe(row: 0, column: 0, hapticsEnabled: false)
+        model.finishRound(hapticsEnabled: false, soundEnabled: false)
+
+        XCTAssertEqual(model.best, 10, "Classic best is unaffected by a Daily score")
+        XCTAssertEqual(model.stats.bestClassicScore, 10)
+        XCTAssertEqual(model.stats.bestDailyScore, 30)
+        XCTAssertEqual(model.dailyBest, 30)
+    }
+
+    @MainActor
+    func testDailyLocksAfterCompletionUntilNextDay() {
+        let model = GameModel(makeInitialBoard: false)
+        XCTAssertFalse(model.isDailyCompletedToday)
+
+        var board = GameRules.emptyBoard()
+        board[3][5] = PopBlock(direction: .right, tone: .mistBlue)
+        model.loadBoardForTesting(board, mode: .daily)
+        model.swipe(row: 3, column: 5, hapticsEnabled: false)
+        model.finishRound(hapticsEnabled: false, soundEnabled: false)
+
+        XCTAssertTrue(model.isDailyCompletedToday, "Finishing today's Daily locks further attempts until rollover")
+    }
+
+    @MainActor
+    func testDailyStreakIncrementsAndResets() {
+        var fakeNow = dayDate(2026, 6, 20)
+        let model = GameModel(makeInitialBoard: false, now: { fakeNow })
+
+        finishDailyRound(model)
+        XCTAssertEqual(model.currentStreak, 1)
+
+        // Next calendar day → streak continues.
+        fakeNow = dayDate(2026, 6, 21)
+        finishDailyRound(model)
+        XCTAssertEqual(model.currentStreak, 2)
+
+        // A multi-day gap → streak restarts at 1, longest preserved.
+        fakeNow = dayDate(2026, 6, 25)
+        finishDailyRound(model)
+        XCTAssertEqual(model.currentStreak, 1)
+        XCTAssertEqual(model.stats.longestStreak, 2)
+    }
+
+    @MainActor
+    func testAchievementThresholdsAreProgressive() {
+        // A tiny first round should unlock only "first_run" — not the whole catalog (E5).
+        let model = GameModel(makeInitialBoard: false)
+        var board = GameRules.emptyBoard()
+        board[3][5] = PopBlock(direction: .right, tone: .mistBlue)
+        board[0][0] = PopBlock(direction: .up, tone: .mistBlue)
+        board[6][0] = PopBlock(direction: .down, tone: .lavenderMist)
+
+        model.loadBoardForTesting(board)
+        model.swipe(row: 3, column: 5, hapticsEnabled: false)
+        model.finishRound(hapticsEnabled: false, soundEnabled: false)
+
+        XCTAssertEqual(model.roundSummary?.unlockedAchievements.map(\.id), ["first_run"])
+    }
+
+    @MainActor
+    func testNewBestEventFiresOnceWhenCrossed() {
+        let model = GameModel(makeInitialBoard: false)
+        // Establish a Classic best of 10.
+        var first = GameRules.emptyBoard()
+        first[3][5] = PopBlock(direction: .right, tone: .mistBlue)
+        first[0][0] = PopBlock(direction: .up, tone: .mistBlue)
+        first[6][0] = PopBlock(direction: .down, tone: .lavenderMist)
+        model.loadBoardForTesting(first)
+        model.swipe(row: 3, column: 5, hapticsEnabled: false)
+        model.finishRound(hapticsEnabled: false, soundEnabled: false)
+        XCTAssertEqual(model.best, 10)
+
+        // New run: the pop that pushes the live score past 10 surfaces a celebration toast.
+        var second = GameRules.emptyBoard()
+        second[3][5] = PopBlock(direction: .right, tone: .mistBlue)
+        second[0][0] = PopBlock(direction: .up, tone: .mistBlue)
+        second[6][0] = PopBlock(direction: .down, tone: .lavenderMist)
+        model.loadBoardForTesting(second)
+        model.swipe(row: 3, column: 5, hapticsEnabled: false) // score 10, not yet over best
+        XCTAssertNotEqual(model.boardToast?.style, .celebration)
+        model.swipe(row: 0, column: 0, hapticsEnabled: false) // score 30, crosses best
+        XCTAssertEqual(model.boardToast?.style, .celebration)
+    }
+
+    @MainActor
+    func testResetClearsAllLocalData() {
+        let model = GameModel(makeInitialBoard: false)
+        var board = GameRules.emptyBoard()
+        board[3][5] = PopBlock(direction: .right, tone: .mistBlue)
+        model.loadBoardForTesting(board)
+        model.swipe(row: 3, column: 5, hapticsEnabled: false)
+        model.finishRound(hapticsEnabled: false, soundEnabled: false)
+        XCTAssertGreaterThan(model.stats.roundsPlayed, 0)
+        XCTAssertGreaterThan(model.best, 0)
+
+        model.resetLocalData()
+
+        XCTAssertEqual(model.stats, PlayerStats())
+        XCTAssertEqual(model.best, 0)
+        XCTAssertEqual(model.dailyBest, 0)
+        XCTAssertEqual(GameModel.loadStats(), PlayerStats(), "Persisted stats are cleared too")
+    }
+
+    @MainActor
+    private func finishDailyRound(_ model: GameModel) {
+        var board = GameRules.emptyBoard()
+        board[3][5] = PopBlock(direction: .right, tone: .mistBlue)
+        model.loadBoardForTesting(board, mode: .daily)
+        model.swipe(row: 3, column: 5, hapticsEnabled: false)
+        model.finishRound(hapticsEnabled: false, soundEnabled: false)
+    }
+
     private func dayDate(_ year: Int, _ month: Int, _ day: Int) -> Date {
         var components = DateComponents()
         components.year = year
