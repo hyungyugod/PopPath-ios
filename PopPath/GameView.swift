@@ -10,6 +10,9 @@ struct GameView: View {
     let reduceMotion: Bool
     let onExit: () -> Void
 
+    @State private var showExitConfirm = false
+    @State private var showDailyRestartConfirm = false
+
     var body: some View {
         VStack(spacing: 12) {
             topBar
@@ -38,6 +41,48 @@ struct GameView: View {
                 .padding(.bottom, 22)
         }
         .padding(.horizontal, 16)
+        .overlay {
+            if game.runState == .paused {
+                PausedOverlay(
+                    onResume: { game.resume() },
+                    onQuit: {
+                        game.creditAndEndRun()
+                        onExit()
+                    }
+                )
+                .transition(.opacity)
+            }
+        }
+        .animation(.easeInOut(duration: reduceMotion ? 0 : 0.2), value: game.runState == .paused)
+        .confirmationDialog(
+            language.text("End run?", "그만할까요?"),
+            isPresented: $showExitConfirm,
+            titleVisibility: .visible
+        ) {
+            Button(language.text("End run", "그만하기"), role: .destructive) {
+                game.creditAndEndRun()
+                onExit()
+            }
+            Button(language.text("Keep playing", "계속하기"), role: .cancel) {
+                game.resume()
+            }
+        } message: {
+            Text(language.text("Your score so far will be saved.", "지금까지 점수는 저장돼요."))
+        }
+        .confirmationDialog(
+            language.text("Restart today's challenge?", "오늘의 도전을 다시 할까요?"),
+            isPresented: $showDailyRestartConfirm,
+            titleVisibility: .visible
+        ) {
+            Button(language.text("Restart", "다시 시작"), role: .destructive) {
+                game.newRound(mode: .daily)
+            }
+            Button(language.text("Keep playing", "계속하기"), role: .cancel) {
+                game.resume()
+            }
+        } message: {
+            Text(language.text("This forfeits your current run.", "지금 진행 중인 판은 사라져요."))
+        }
         .onAppear {
             game.configureFeedback(soundEnabled: soundEnabled, hapticsEnabled: hapticsEnabled)
         }
@@ -49,9 +94,14 @@ struct GameView: View {
         }
     }
 
+    private func requestExit() {
+        game.pause()
+        showExitConfirm = true
+    }
+
     private var topBar: some View {
-        HStack {
-            Button(action: onExit) {
+        HStack(spacing: 10) {
+            Button(action: requestExit) {
                 Image(systemName: "house.fill")
                     .font(.system(size: 15, weight: .bold, design: .rounded))
                     .foregroundStyle(Color.ppInkGray.opacity(0.82))
@@ -67,17 +117,19 @@ struct GameView: View {
 
             Spacer()
 
-            HStack(spacing: 7) {
-                Image(systemName: "timer")
-                    .font(.system(size: 12, weight: .bold, design: .rounded))
-                Text(language.text("\(GameRules.roundSeconds)s", "\(GameRules.roundSeconds)초"))
-                    .font(.ppDisplay(14, weight: .bold, language: language))
-                    .monospacedDigit()
+            Button { game.pause() } label: {
+                Image(systemName: "pause.fill")
+                    .font(.system(size: 15, weight: .bold, design: .rounded))
+                    .foregroundStyle(Color.ppInkGray.opacity(0.82))
+                    .frame(width: 36, height: 36)
+                    .background(
+                        Circle()
+                            .fill(Color.ppCardCream)
+                            .shadow(color: Color.ppInkGray.opacity(0.11), radius: 9, x: 0, y: 4)
+                    )
             }
-            .foregroundStyle(Color.ppMintText)
-            .padding(.horizontal, 12)
-            .frame(height: 32)
-            .background(Capsule(style: .continuous).fill(Color.ppSoftSage))
+            .buttonStyle(.plain)
+            .accessibilityLabel(language.text("Pause", "일시정지"))
         }
         .padding(.top, 10)
         .padding(.horizontal, 4)
@@ -90,7 +142,12 @@ struct GameView: View {
             Spacer()
 
             Button {
-                game.newBoard()
+                if game.mode == .daily {
+                    game.pause()
+                    showDailyRestartConfirm = true
+                } else {
+                    game.reshuffleBoard()
+                }
             } label: {
                 Label(
                     game.mode == .daily
@@ -146,6 +203,45 @@ struct GameView: View {
             }
             .lineLimit(1)
             .minimumScaleFactor(0.78)
+        }
+    }
+}
+
+private struct PausedOverlay: View {
+    @Environment(\.appLanguage) private var language
+
+    let onResume: () -> Void
+    let onQuit: () -> Void
+
+    var body: some View {
+        ZStack {
+            Color.ppInkGray.opacity(0.5)
+                .ignoresSafeArea()
+
+            VStack(spacing: 14) {
+                Text(language.text("Paused", "일시정지"))
+                    .font(.ppDisplay(30, weight: .bold, language: language))
+                    .foregroundStyle(Color.ppWarmCream)
+                    .padding(.bottom, 6)
+
+                PrimaryPopButton(language.text("Resume", "계속하기"), systemImage: "play.fill", action: onResume)
+
+                Button(action: onQuit) {
+                    Text(language.text("Quit to Home", "홈으로 나가기"))
+                        .font(.ppDisplay(16, weight: .semibold, language: language))
+                        .foregroundStyle(Color.ppWarmCream)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 52)
+                        .background(
+                            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                                .stroke(Color.ppWarmCream.opacity(0.5), lineWidth: 1.5)
+                        )
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(language.text("Quit to Home", "홈으로 나가기"))
+            }
+            .padding(28)
+            .frame(maxWidth: 320)
         }
     }
 }

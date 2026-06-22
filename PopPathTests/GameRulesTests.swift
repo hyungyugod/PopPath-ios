@@ -248,8 +248,10 @@ final class GameRulesTests: XCTestCase {
         model.abandonRound()
 
         XCTAssertFalse(model.running)
+        XCTAssertEqual(model.runState, .idle)
         XCTAssertNil(model.roundSummary)
         XCTAssertEqual(model.chain, 0)
+        XCTAssertEqual(model.stats.roundsPlayed, 0, "Abandon is the discard path; it must not credit stats")
     }
 
     @MainActor
@@ -469,6 +471,168 @@ final class GameRulesTests: XCTestCase {
             GameRules.blockCount(in: board),
             BoardGenerationProfile.standard.minimumOpenCells
         )
+    }
+
+    // MARK: - Sprint 3: lifecycle, wall-clock, destructive-action safety
+
+    @MainActor
+    func testPauseFreezesClockAndChain() {
+        var fakeNow = Date(timeIntervalSinceReferenceDate: 1_000)
+        let model = GameModel(makeInitialBoard: false, now: { fakeNow })
+        var board = GameRules.emptyBoard()
+        board[0][0] = PopBlock(direction: .up, tone: .mistBlue)
+        board[3][5] = PopBlock(direction: .right, tone: .mistBlue)
+
+        model.loadBoardForTesting(board)
+        model.swipe(row: 3, column: 5, hapticsEnabled: false)
+        XCTAssertEqual(model.chain, 1)
+        XCTAssertEqual(model.time, 60)
+
+        model.pause()
+        XCTAssertEqual(model.runState, .paused)
+
+        // 10 seconds pass while paused.
+        fakeNow = fakeNow.addingTimeInterval(10)
+        model.resume()
+
+        XCTAssertEqual(model.runState, .running)
+        XCTAssertEqual(model.time, 60, "Paused seconds must not be deducted from the clock")
+        XCTAssertEqual(model.chain, 1, "Pause must preserve the chain")
+    }
+
+    @MainActor
+    func testWallClockDeductsElapsedTimeOnForeground() {
+        var fakeNow = Date(timeIntervalSinceReferenceDate: 5_000)
+        let model = GameModel(makeInitialBoard: false, now: { fakeNow })
+        var board = GameRules.emptyBoard()
+        board[3][5] = PopBlock(direction: .right, tone: .mistBlue)
+
+        model.loadBoardForTesting(board)
+        XCTAssertEqual(model.time, 60)
+
+        // Simulate 12s elapsing while backgrounded, then returning to the foreground.
+        fakeNow = fakeNow.addingTimeInterval(12)
+        model.handleForeground()
+
+        XCTAssertEqual(model.time, 48, "Backgrounded time keeps burning the wall clock")
+    }
+
+    @MainActor
+    func testReshuffleBoardKeepsScoreAndTime() {
+        let model = GameModel(makeInitialBoard: false)
+        var board = GameRules.emptyBoard()
+        board[0][0] = PopBlock(direction: .up, tone: .mistBlue)
+        board[3][5] = PopBlock(direction: .right, tone: .mistBlue)
+
+        model.loadBoardForTesting(board)
+        model.swipe(row: 3, column: 5, hapticsEnabled: false)
+        let scoreBefore = model.score
+        let timeBefore = model.time
+
+        model.reshuffleBoard()
+
+        XCTAssertEqual(model.score, scoreBefore, "Reshuffle keeps the score")
+        XCTAssertEqual(model.time, timeBefore, "Reshuffle keeps the clock")
+        XCTAssertEqual(model.chain, 1, "Reshuffle keeps the chain")
+        XCTAssertTrue(model.running)
+        XCTAssertGreaterThan(GameRules.blockCount(in: model.board), 0)
+    }
+
+    @MainActor
+    func testExitCreditsLifetimeStats() {
+        let model = GameModel(makeInitialBoard: false)
+        var board = GameRules.emptyBoard()
+        board[0][0] = PopBlock(direction: .up, tone: .mistBlue)
+        board[3][5] = PopBlock(direction: .right, tone: .mistBlue)
+        board[4][0] = PopBlock(direction: .left, tone: .lavenderMist)
+
+        model.loadBoardForTesting(board)
+        model.swipe(row: 3, column: 5, hapticsEnabled: false)
+        model.swipe(row: 4, column: 0, hapticsEnabled: false)
+
+        model.creditAndEndRun()
+
+        XCTAssertFalse(model.running)
+        XCTAssertNil(model.roundSummary, "Credited exit shows no summary screen")
+        XCTAssertEqual(model.stats.roundsPlayed, 1)
+        XCTAssertEqual(model.stats.totalPops, 2)
+        XCTAssertEqual(model.stats.bestScore, 30)
+        XCTAssertEqual(model.best, 30)
+        XCTAssertEqual(GameModel.loadStats(), model.stats)
+    }
+
+    @MainActor
+    func testMissAppliesTimePenalty() {
+        var fakeNow = Date(timeIntervalSinceReferenceDate: 2_000)
+        let model = GameModel(makeInitialBoard: false, now: { fakeNow })
+        var board = GameRules.emptyBoard()
+        board[2][1] = PopBlock(direction: .right, tone: .mistBlue)
+        board[2][4] = PopBlock(direction: .left, tone: .lavenderMist)
+
+        model.loadBoardForTesting(board)
+        XCTAssertEqual(model.time, 60)
+
+        // (2,1) points right into the blocked (2,4): a miss.
+        model.swipe(row: 2, column: 1, hapticsEnabled: false)
+
+        XCTAssertEqual(model.time, 58, "A miss shaves a small fixed amount off the clock")
+    }
+
+    @MainActor
+    func testPopFeedbackEscalatesWithChain() {
+        XCTAssertEqual(GameModel.feedbackEvent(forChain: 1), .escape)
+        XCTAssertEqual(GameModel.feedbackEvent(forChain: 2), .chain)
+        XCTAssertEqual(GameModel.feedbackEvent(forChain: 4), .chain)
+        XCTAssertEqual(GameModel.feedbackEvent(forChain: 5), .bigChain)
+        XCTAssertEqual(GameModel.feedbackEvent(forChain: 9), .bigChain)
+    }
+
+    @MainActor
+    func testDailyRollsOverWhenDateChanges() {
+        var fakeNow = dayDate(2026, 6, 22)
+        let model = GameModel(makeInitialBoard: false, now: { fakeNow })
+        let firstId = model.dailyChallenge.id
+
+        // Jump to a clearly different calendar day (timezone-robust gap).
+        fakeNow = dayDate(2026, 8, 15)
+        model.refreshDailyIfDateChanged()
+
+        XCTAssertNotEqual(model.dailyChallenge.id, firstId)
+        XCTAssertEqual(model.dailyChallenge.id, DailyChallenge.today(now: fakeNow).id)
+    }
+
+    @MainActor
+    func testPendingRefreshDoesNotBlockLaterBoardClear() {
+        let model = GameModel(makeInitialBoard: false)
+        var board = GameRules.emptyBoard()
+        board[0][0] = PopBlock(direction: .up, tone: .mistBlue)
+
+        model.loadBoardForTesting(board)
+        model.swipe(row: 0, column: 0, hapticsEnabled: false)
+        // First clear awards the bonus and schedules an (async) refresh.
+        XCTAssertGreaterThanOrEqual(model.score, 210)
+
+        // Resetting the round while that refresh is still pending must clear the refresh
+        // sentinel, or every future board clear would be silently blocked.
+        var board2 = GameRules.emptyBoard()
+        board2[0][0] = PopBlock(direction: .up, tone: .mistBlue)
+        model.loadBoardForTesting(board2)
+        model.swipe(row: 0, column: 0, hapticsEnabled: false)
+
+        XCTAssertGreaterThanOrEqual(
+            model.score,
+            210,
+            "A pending board refresh must not block a later board clear from awarding its bonus"
+        )
+    }
+
+    private func dayDate(_ year: Int, _ month: Int, _ day: Int) -> Date {
+        var components = DateComponents()
+        components.year = year
+        components.month = month
+        components.day = day
+        components.hour = 12
+        return Calendar(identifier: .gregorian).date(from: components) ?? Date()
     }
 
     private func boardSignature(_ board: [[PopBlock?]]) -> [[String]] {

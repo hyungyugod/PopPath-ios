@@ -246,6 +246,15 @@ struct BoardEvent: Identifiable, Equatable {
     let duration: UInt64
 }
 
+/// Explicit round lifecycle. `running` (the actively-ticking state) is kept as a computed
+/// mirror for existing call sites and tests.
+enum RunState: Equatable {
+    case idle
+    case running
+    case paused
+    case finished
+}
+
 @MainActor
 final class GameModel: ObservableObject {
     @Published private(set) var board: [[PopBlock?]] {
@@ -259,7 +268,11 @@ final class GameModel: ObservableObject {
     @Published private(set) var chain = 0
     @Published private(set) var maxChain = 0
     @Published private(set) var time = GameRules.roundSeconds
-    @Published private(set) var running = false
+    @Published private(set) var runState: RunState = .idle
+    /// Actively ticking. Kept as a computed mirror of `runState`.
+    var running: Bool { runState == .running }
+    /// A round is in progress (running or explicitly paused).
+    var isRoundActive: Bool { runState == .running || runState == .paused }
     @Published private(set) var best: Int
     @Published private(set) var dailyBest: Int
     @Published private(set) var mode: GameMode = .classic
@@ -288,9 +301,16 @@ final class GameModel: ObservableObject {
     private var recentBoardSignatures: [String] = []
     private var roundMetrics = RoundMetrics.zero
     private var pendingEvents: [BoardEvent] = []
+    private var roundClock: RoundClock?
+    private var pendingRefreshReason: BoardRefreshReason?
+    private var lastMissFeedbackAt: Date?
+    private let now: () -> Date
+    /// Seconds a miss shaves off the round deadline (E2).
+    private let missTimePenalty: TimeInterval = 2
 
-    init(makeInitialBoard: Bool = true) {
-        let challenge = DailyChallenge.today()
+    init(makeInitialBoard: Bool = true, now: @escaping () -> Date = { Date() }) {
+        self.now = now
+        let challenge = DailyChallenge.today(now: now())
         let loadedStats = Self.loadStats()
         self.dailyChallenge = challenge
         self.stats = loadedStats
@@ -312,6 +332,7 @@ final class GameModel: ObservableObject {
         timerTask?.cancel()
         chainResetTask?.cancel()
         boardRefreshTask?.cancel()
+        boardRefreshTask = nil
         toastTask?.cancel()
     }
 
@@ -342,6 +363,7 @@ final class GameModel: ObservableObject {
         timerTask?.cancel()
         chainResetTask?.cancel()
         boardRefreshTask?.cancel()
+        boardRefreshTask = nil
         toastTask?.cancel()
 
         self.mode = mode
@@ -355,32 +377,145 @@ final class GameModel: ObservableObject {
         roundMetrics = .zero
         escapingBlocks = []
         board = makeBoard(for: mode)
+        roundClock = RoundClock(start: now(), duration: TimeInterval(GameRules.roundSeconds))
         time = GameRules.roundSeconds
-        running = true
+        runState = .running
         isDealing = false
         boardToast = nil
         pendingEvents = []
+        pendingRefreshReason = nil
+        lastMissFeedbackAt = nil
         roundSummary = nil
 
         startTimer()
     }
 
+    /// Full reset to a fresh round (Daily "Restart", gated behind a confirm in the UI).
     func newBoard() {
         newRound(mode: mode)
     }
 
-    func abandonRound() {
-        running = false
+    /// Classic "New board": deal a fresh board in place, keeping score / chain / time /
+    /// metrics. Does not advance `boardDealIndex`, so a manual reshuffle never ramps
+    /// difficulty.
+    func reshuffleBoard() {
+        guard runState == .running else { return }
+        boardRefreshTask?.cancel()
+        boardRefreshTask = nil
+        toastTask?.cancel()
+        pendingRefreshReason = nil
         isDealing = false
+        escapingBlocks = []
+        boardToast = nil
+        pendingEvents = []
+
+        let profile = BoardGenerationProfile.difficulty(level: currentDifficultyLevel)
+        board = makeClassicBoard(profile: profile)
+    }
+
+    func pause() {
+        guard runState == .running else { return }
+        runState = .paused
+        roundClock?.pause(at: now())
         timerTask?.cancel()
         chainResetTask?.cancel()
         boardRefreshTask?.cancel()
+        // Keep pendingRefreshReason so resume() can re-deal; the cancelled task must not
+        // linger as the non-nil sentinel that gates resolveBoardAfterRemoval.
+        boardRefreshTask = nil
+    }
+
+    func resume() {
+        guard runState == .paused else { return }
+        roundClock?.resume(at: now())
+        runState = .running
+        syncTimeFromClock()
+        startTimer()
+        if chain > 0 {
+            scheduleChainReset()
+        }
+        if let pendingRefreshReason {
+            scheduleBoardRefresh(reason: pendingRefreshReason)
+        }
+    }
+
+    /// Confirmed exit: credit pops / score toward lifetime totals & best (no summary, no
+    /// achievement popups), then stop. `abandonRound` is the no-credit discard path.
+    func creditAndEndRun() {
+        guard isRoundActive else { return }
+        runState = .idle
+        isDealing = false
+        pendingRefreshReason = nil
+        timerTask?.cancel()
+        chainResetTask?.cancel()
+        boardRefreshTask?.cancel()
+        boardRefreshTask = nil
+        toastTask?.cancel()
+        chain = 0
+        boardToast = nil
+        pendingEvents = []
+        escapingBlocks = []
+
+        let completedMetrics = roundMetrics
+        if score > best {
+            best = score
+            UserDefaults.standard.set(score, forKey: Self.bestScoreStorageKey)
+        }
+        _ = updateDailyBestIfNeeded()
+        var updatedStats = stats
+        updatedStats.recordRound(
+            score: score,
+            mode: mode,
+            maxChain: maxChain,
+            metrics: completedMetrics
+        )
+        stats = updatedStats
+        Self.saveStats(updatedStats)
+        roundSummary = nil
+    }
+
+    func abandonRound() {
+        runState = .idle
+        isDealing = false
+        pendingRefreshReason = nil
+        timerTask?.cancel()
+        chainResetTask?.cancel()
+        boardRefreshTask?.cancel()
+        boardRefreshTask = nil
         toastTask?.cancel()
         chain = 0
         boardToast = nil
         pendingEvents = []
         escapingBlocks = []
         roundSummary = nil
+    }
+
+    /// If the calendar day rolled over since the round was set up, swap in today's Daily
+    /// challenge and reload its best. Never rolls over mid-run (it would change the seed
+    /// under the player). Call on foreground and when Home appears.
+    func refreshDailyIfDateChanged() {
+        guard !isRoundActive else { return }
+        let today = DailyChallenge.today(now: now())
+        guard today.id != dailyChallenge.id else { return }
+        dailyChallenge = today
+        let stored = UserDefaults.standard.object(
+            forKey: Self.dailyBestStorageKey(for: today.id)
+        ) as? Int
+        dailyBest = stored ?? 0
+    }
+
+    /// Re-sync the wall clock after returning to the foreground: the clock kept running
+    /// while backgrounded (an explicit pause does not), so reflect the elapsed time and
+    /// finish if the deadline passed. Also picks up a Daily date rollover.
+    func handleForeground() {
+        refreshDailyIfDateChanged()
+        guard runState == .running else { return }
+        syncTimeFromClock()
+        if time <= 0 {
+            finishRound()
+        } else {
+            startTimer()
+        }
     }
 
     func configureFeedback(soundEnabled: Bool, hapticsEnabled: Bool) {
@@ -428,7 +563,7 @@ final class GameModel: ObservableObject {
             chain = nextChain
             score += 10 * chain
             maxChain = max(maxChain, chain)
-            let feedbackEvent = feedbackEvent(for: chain)
+            let feedbackEvent = Self.feedbackEvent(forChain: chain)
             showChainToastIfNeeded()
             scheduleChainReset()
             awardUnlockBonusIfNeeded(openBeforeRemoval: openBeforeRemoval)
@@ -449,7 +584,11 @@ final class GameModel: ObservableObject {
 
             block.isMiss = true
             updateCell(row: row, column: column, with: block)
-            queueFeedback(.miss, hapticsEnabled: hapticsEnabled, soundEnabled: soundEnabled)
+            applyMissTimePenalty()
+            // Coalesce rapid misses so a fumble doesn't machine-gun haptics/sound (J7).
+            if shouldEmitMissFeedback() {
+                queueFeedback(.miss, hapticsEnabled: hapticsEnabled, soundEnabled: soundEnabled)
+            }
 
             let blockID = block.id
             Task { [weak self] in
@@ -457,6 +596,24 @@ final class GameModel: ObservableObject {
                 self?.clearMiss(id: blockID, row: row, column: column)
             }
         }
+    }
+
+    private func applyMissTimePenalty() {
+        guard runState == .running, roundClock != nil else { return }
+        roundClock?.reduceRemaining(by: missTimePenalty)
+        syncTimeFromClock()
+        if time <= 0 {
+            finishRound()
+        }
+    }
+
+    private func shouldEmitMissFeedback() -> Bool {
+        let current = now()
+        if let last = lastMissFeedbackAt, current.timeIntervalSince(last) < 0.15 {
+            return false
+        }
+        lastMissFeedbackAt = current
+        return true
     }
 
     /// Legacy entry point: delegates to `attemptPop` using the block's own arrow, so a
@@ -485,11 +642,13 @@ final class GameModel: ObservableObject {
     func finishRound(hapticsEnabled: Bool? = nil, soundEnabled: Bool? = nil) {
         guard running else { return }
 
-        running = false
+        runState = .finished
         isDealing = false
+        pendingRefreshReason = nil
         timerTask?.cancel()
         chainResetTask?.cancel()
         boardRefreshTask?.cancel()
+        boardRefreshTask = nil
         toastTask?.cancel()
         escapingBlocks = []
         pendingEvents = []
@@ -555,6 +714,7 @@ final class GameModel: ObservableObject {
         timerTask?.cancel()
         chainResetTask?.cancel()
         boardRefreshTask?.cancel()
+        boardRefreshTask = nil
         toastTask?.cancel()
 
         self.mode = mode
@@ -565,13 +725,16 @@ final class GameModel: ObservableObject {
         self.score = 0
         self.chain = 0
         self.maxChain = 0
-        self.time = GameRules.roundSeconds
-        self.running = running
+        self.roundClock = RoundClock(start: now(), duration: TimeInterval(GameRules.roundSeconds))
+        self.time = roundClock?.remainingSeconds(at: now()) ?? GameRules.roundSeconds
+        self.runState = running ? .running : .idle
         self.isDealing = false
         self.boardDealIndex = 0
         self.roundMetrics = .zero
         self.boardToast = nil
         self.pendingEvents = []
+        self.pendingRefreshReason = nil
+        self.lastMissFeedbackAt = nil
         self.escapingBlocks = []
         self.roundSummary = nil
     }
@@ -596,15 +759,17 @@ final class GameModel: ObservableObject {
     }
 
     private func tick() {
-        guard running else { return }
+        guard runState == .running, let roundClock else { return }
 
-        if time > 0 {
-            time -= 1
-        }
-
+        time = roundClock.remainingSeconds(at: now())
         if time <= 0 {
             finishRound()
         }
+    }
+
+    private func syncTimeFromClock() {
+        guard let roundClock else { return }
+        time = roundClock.remainingSeconds(at: now())
     }
 
     private func scheduleChainReset() {
@@ -668,13 +833,17 @@ final class GameModel: ObservableObject {
         case .classic:
             return makeClassicBoard(profile: profile)
         case .daily:
-            var random = SeededRandomNumberGenerator(seed: seedForDailyDeal())
+            var random = SeededRandomNumberGenerator(seed: seedForDailyDeal(dealIndex: boardDealIndex))
             return GameRules.generatedBoard(using: &random, profile: profile)
         }
     }
 
     private var currentDifficultyLevel: Int {
-        min(4, max(0, boardDealIndex + score / 500))
+        difficultyLevel(forDealIndex: boardDealIndex)
+    }
+
+    private func difficultyLevel(forDealIndex index: Int) -> Int {
+        min(4, max(0, index + score / 500))
     }
 
     private func makeClassicBoard(profile: BoardGenerationProfile) -> [[PopBlock?]] {
@@ -694,8 +863,8 @@ final class GameModel: ObservableObject {
         UserDefaults.standard.set(recentBoardSignatures, forKey: Self.recentBoardSignaturesStorageKey)
     }
 
-    private func seedForDailyDeal() -> UInt64 {
-        dailyChallenge.seed ^ (UInt64(boardDealIndex) &* 0x9E37_79B9_7F4A_7C15)
+    private func seedForDailyDeal(dealIndex: Int) -> UInt64 {
+        dailyChallenge.seed ^ (UInt64(dealIndex) &* 0x9E37_79B9_7F4A_7C15)
     }
 
     private func resolveBoardAfterRemoval() {
@@ -782,6 +951,9 @@ final class GameModel: ObservableObject {
 
     private func scheduleBoardRefresh(reason: BoardRefreshReason) {
         boardRefreshTask?.cancel()
+        // Remembered so resume() can re-schedule a deal that was pending when the player
+        // paused inside the (brief) post-clear / post-stuck window.
+        pendingRefreshReason = reason
         boardRefreshTask = Task { [weak self] in
             try? await Task.sleep(nanoseconds: reason == .clear ? 260_000_000 : 220_000_000)
             if Task.isCancelled { return }
@@ -797,9 +969,12 @@ final class GameModel: ObservableObject {
         // half-swapped board. (During the scheduled delay before this runs the board is
         // either empty or fully blocked, so leaving input open there is harmless.)
         isDealing = true
-        boardDealIndex += 1
-        let level = currentDifficultyLevel
-        roundMetrics.difficultyPeak = max(roundMetrics.difficultyPeak, level)
+        // Compute against the *next* index but don't commit it until the deal succeeds, so
+        // a deal superseded mid-generation (e.g. pause/resume) can't double-advance the
+        // index and desync the Daily seed / difficulty — the replacement deal recomputes
+        // the same value.
+        let nextIndex = boardDealIndex + 1
+        let level = difficultyLevel(forDealIndex: nextIndex)
         let profile = BoardGenerationProfile.difficulty(level: level)
         let dealMode = mode
 
@@ -815,7 +990,7 @@ final class GameModel: ObservableObject {
             }.value
         case .daily:
             nextBoard = await GameRules.generatedBoardAsync(
-                seed: seedForDailyDeal(),
+                seed: seedForDailyDeal(dealIndex: nextIndex),
                 profile: profile
             )
         }
@@ -826,23 +1001,28 @@ final class GameModel: ObservableObject {
             return
         }
 
+        boardDealIndex = nextIndex
+        roundMetrics.difficultyPeak = max(roundMetrics.difficultyPeak, level)
         if dealMode == .classic {
             rememberClassicBoard(nextBoard)
         }
         escapingBlocks = []
         board = nextBoard
         boardRefreshTask = nil
+        pendingRefreshReason = nil
         isDealing = false
     }
 
-    private func feedbackEvent(for chain: Int) -> Haptics.Event {
+    /// Pop haptic tier (J3): a single pop is the light `.escape`; a 2–4 chain steps up to
+    /// `.chain`; 5+ is `.bigChain`.
+    static func feedbackEvent(forChain chain: Int) -> Haptics.Event {
         if chain >= 5 {
             return .bigChain
         }
         if chain >= 2 {
             return .chain
         }
-        return .chain
+        return .escape
     }
 
     private func queueFeedback(_ event: Haptics.Event, hapticsEnabled: Bool, soundEnabled: Bool) {
@@ -911,7 +1091,7 @@ final class GameModel: ObservableObject {
     }
 
     private func refreshDailyChallenge() {
-        let challenge = DailyChallenge.today()
+        let challenge = DailyChallenge.today(now: now())
         dailyChallenge = challenge
 
         let storedDailyBest = UserDefaults.standard.object(

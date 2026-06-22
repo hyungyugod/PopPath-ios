@@ -216,6 +216,44 @@ struct DailyChallenge: Equatable {
     }
 }
 
+/// Wall-clock round timer. `remaining` is derived as `ceil(deadline - now)`, so leaving the
+/// app running in the background still burns the clock (you can't freeze it by backgrounding),
+/// while an explicit pause freezes it and shifts the deadline forward on resume. A miss pulls
+/// the deadline in a little. Every read takes an injected `now`, so tests are deterministic.
+struct RoundClock: Equatable {
+    let totalDuration: TimeInterval
+    private(set) var deadline: Date
+    private(set) var pausedAt: Date?
+
+    init(start: Date, duration: TimeInterval) {
+        totalDuration = duration
+        deadline = start.addingTimeInterval(duration)
+        pausedAt = nil
+    }
+
+    var isPaused: Bool { pausedAt != nil }
+
+    func remainingSeconds(at now: Date) -> Int {
+        let reference = pausedAt ?? now
+        return max(0, Int(deadline.timeIntervalSince(reference).rounded(.up)))
+    }
+
+    mutating func pause(at now: Date) {
+        guard pausedAt == nil else { return }
+        pausedAt = now
+    }
+
+    mutating func resume(at now: Date) {
+        guard let pausedAt else { return }
+        deadline = deadline.addingTimeInterval(now.timeIntervalSince(pausedAt))
+        self.pausedAt = nil
+    }
+
+    mutating func reduceRemaining(by seconds: TimeInterval) {
+        deadline = deadline.addingTimeInterval(-seconds)
+    }
+}
+
 enum GameRules {
     static let rows = 7
     static let columns = 6
@@ -589,7 +627,7 @@ enum GameRules {
 
 @MainActor
 enum Haptics {
-    enum Event: CaseIterable {
+    enum Event: CaseIterable, Equatable {
         case escape
         case chain
         case bigChain

@@ -21,6 +21,7 @@ private enum AppRoute {
 struct RootView: View {
     @StateObject private var game = GameModel()
     @State private var route: AppRoute = .home
+    @Environment(\.scenePhase) private var scenePhase
     @AppStorage("hasSeenTutorial") private var hasSeenTutorial = false
     @AppStorage("soundEnabled") private var soundEnabled = true
     @AppStorage("hapticsEnabled") private var hapticsEnabled = true
@@ -51,6 +52,13 @@ struct RootView: View {
             guard game.roundSummary != nil else { return }
             withAnimation(.spring(response: 0.38, dampingFraction: 0.86)) {
                 route = .result
+            }
+        }
+        .onChange(of: scenePhase) { _, phase in
+            // The wall clock keeps running while backgrounded (an explicit pause does not);
+            // on return, reflect the elapsed time and pick up a Daily date rollover.
+            if phase == .active {
+                game.handleForeground()
             }
         }
     }
@@ -91,6 +99,7 @@ struct RootView: View {
                     }
                 }
             )
+            .onAppear { game.refreshDailyIfDateChanged() }
         case .tutorial:
             TutorialView(
                 reduceMotion: reduceMotion,
@@ -107,7 +116,7 @@ struct RootView: View {
                 colorAssist: colorAssist,
                 reduceMotion: reduceMotion,
                 onExit: {
-                    game.abandonRound()
+                    // GameView already finalized the round (credited exit); just route home.
                     withAnimation(.spring(response: 0.38, dampingFraction: 0.86)) {
                         route = .home
                     }
