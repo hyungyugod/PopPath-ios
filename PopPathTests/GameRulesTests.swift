@@ -1,4 +1,5 @@
 import XCTest
+import CoreGraphics
 @testable import PopPath
 
 final class GameRulesTests: XCTestCase {
@@ -74,8 +75,10 @@ final class GameRulesTests: XCTestCase {
     func testBoardSignatureIgnoresIdentityAndTransientState() {
         var first = GameRules.emptyBoard()
         var second = GameRules.emptyBoard()
+        var transientBlock = PopBlock(direction: .right, tone: .mistBlue)
+        transientBlock.isMiss = true
 
-        first[0][0] = PopBlock(direction: .right, tone: .mistBlue, isLeaving: true)
+        first[0][0] = transientBlock
         second[0][0] = PopBlock(direction: .right, tone: .mistBlue)
 
         XCTAssertEqual(GameRules.boardSignature(first), GameRules.boardSignature(second))
@@ -155,8 +158,8 @@ final class GameRulesTests: XCTestCase {
         board[4][0] = PopBlock(direction: .left, tone: .lavenderMist)
 
         model.loadBoardForTesting(board)
-        model.tap(row: 3, column: 5, hapticsEnabled: false)
-        model.tap(row: 4, column: 0, hapticsEnabled: false)
+        model.swipe(row: 3, column: 5, hapticsEnabled: false)
+        model.swipe(row: 4, column: 0, hapticsEnabled: false)
 
         XCTAssertEqual(model.chain, 2)
         XCTAssertEqual(model.maxChain, 2)
@@ -172,16 +175,16 @@ final class GameRulesTests: XCTestCase {
         board[2][4] = PopBlock(direction: .left, tone: .lavenderMist)
 
         model.loadBoardForTesting(board)
-        model.tap(row: 3, column: 5, hapticsEnabled: false)
+        model.swipe(row: 3, column: 5, hapticsEnabled: false)
         XCTAssertEqual(model.chain, 1)
 
-        model.tap(row: 2, column: 1, hapticsEnabled: false)
+        model.swipe(row: 2, column: 1, hapticsEnabled: false)
         XCTAssertEqual(model.chain, 0)
         XCTAssertEqual(model.score, 10)
     }
 
     @MainActor
-    func testSuccessfulTapFreesPathImmediately() {
+    func testSuccessfulSwipeFreesPathImmediately() {
         let model = GameModel(makeInitialBoard: false)
         var board = GameRules.emptyBoard()
         board[0][0] = PopBlock(direction: .up, tone: .mistBlue)
@@ -191,17 +194,32 @@ final class GameRulesTests: XCTestCase {
         model.loadBoardForTesting(board)
         XCTAssertFalse(GameRules.openPositions(in: model.board).contains(BoardPosition(row: 3, column: 2)))
 
-        model.tap(row: 3, column: 5, hapticsEnabled: false, soundEnabled: false)
+        model.swipe(row: 3, column: 5, hapticsEnabled: false, soundEnabled: false)
 
         XCTAssertNil(model.board[3][5])
         XCTAssertEqual(model.escapingBlocks.count, 1)
         XCTAssertTrue(GameRules.openPositions(in: model.board).contains(BoardPosition(row: 3, column: 2)))
 
-        model.tap(row: 3, column: 2, hapticsEnabled: false, soundEnabled: false)
+        model.swipe(row: 3, column: 2, hapticsEnabled: false, soundEnabled: false)
 
         XCTAssertNil(model.board[3][2])
         XCTAssertEqual(model.chain, 2)
         XCTAssertEqual(model.escapingBlocks.count, 2)
+    }
+
+    @MainActor
+    func testSwipeCreatesEscapeEffect() {
+        let model = GameModel(makeInitialBoard: false)
+        var board = GameRules.emptyBoard()
+        board[3][5] = PopBlock(direction: .right, tone: .mistBlue)
+
+        model.loadBoardForTesting(board)
+        model.swipe(row: 3, column: 5, hapticsEnabled: false, soundEnabled: false)
+
+        XCTAssertNil(model.board[3][5])
+        XCTAssertEqual(model.escapingBlocks.count, 1)
+        XCTAssertEqual(model.escapingBlocks.first?.chain, 1)
+        XCTAssertEqual(model.chain, 1)
     }
 
     @MainActor
@@ -214,7 +232,7 @@ final class GameRulesTests: XCTestCase {
         model.loadBoardForTesting(board)
         XCTAssertFalse(GameRules.openPositions(in: model.board).contains(BoardPosition(row: 3, column: 2)))
 
-        model.tap(row: 3, column: 5, hapticsEnabled: false, soundEnabled: false)
+        model.swipe(row: 3, column: 5, hapticsEnabled: false, soundEnabled: false)
         try? await Task.sleep(nanoseconds: 420_000_000)
 
         XCTAssertTrue(GameRules.openPositions(in: model.board).contains(BoardPosition(row: 3, column: 2)))
@@ -258,7 +276,7 @@ final class GameRulesTests: XCTestCase {
         model.loadBoardForTesting(board)
         XCTAssertEqual(GameRules.openPositions(in: model.board), Set([BoardPosition(row: 0, column: 0)]))
 
-        model.tap(row: 0, column: 0, hapticsEnabled: false, soundEnabled: false)
+        model.swipe(row: 0, column: 0, hapticsEnabled: false, soundEnabled: false)
         try? await Task.sleep(nanoseconds: 1_050_000_000)
 
         XCTAssertTrue(model.running)
@@ -274,7 +292,7 @@ final class GameRulesTests: XCTestCase {
         board[0][0] = PopBlock(direction: .up, tone: .mistBlue)
 
         model.loadBoardForTesting(board)
-        model.tap(row: 0, column: 0, hapticsEnabled: false, soundEnabled: false)
+        model.swipe(row: 0, column: 0, hapticsEnabled: false, soundEnabled: false)
         await waitForBoardClearRefresh(in: model)
 
         XCTAssertTrue(model.running)
@@ -305,8 +323,8 @@ final class GameRulesTests: XCTestCase {
         board[4][0] = PopBlock(direction: .left, tone: .lavenderMist)
 
         model.loadBoardForTesting(board, mode: .daily)
-        model.tap(row: 3, column: 5, hapticsEnabled: false)
-        model.tap(row: 4, column: 0, hapticsEnabled: false)
+        model.swipe(row: 3, column: 5, hapticsEnabled: false)
+        model.swipe(row: 4, column: 0, hapticsEnabled: false)
         model.finishRound(hapticsEnabled: false, soundEnabled: false)
 
         XCTAssertEqual(model.dailyBest, 250)
@@ -326,8 +344,8 @@ final class GameRulesTests: XCTestCase {
         board[4][0] = PopBlock(direction: .left, tone: .lavenderMist)
 
         model.loadBoardForTesting(board)
-        model.tap(row: 3, column: 5, hapticsEnabled: false, soundEnabled: false)
-        model.tap(row: 4, column: 0, hapticsEnabled: false, soundEnabled: false)
+        model.swipe(row: 3, column: 5, hapticsEnabled: false, soundEnabled: false)
+        model.swipe(row: 4, column: 0, hapticsEnabled: false, soundEnabled: false)
         model.finishRound(hapticsEnabled: false, soundEnabled: false)
 
         XCTAssertEqual(model.stats.roundsPlayed, 1)
@@ -364,6 +382,93 @@ final class GameRulesTests: XCTestCase {
         XCTAssertTrue(koreanShareText.contains("점수 1,234"))
         XCTAssertTrue(koreanShareText.contains("최고 2,000"))
         XCTAssertTrue(koreanShareText.contains("정확도 92%"))
+    }
+
+    // MARK: - Sprint 1: direction-true input (WI-1.1)
+
+    @MainActor
+    func testAttemptPopRequiresMatchingDirection() {
+        let model = GameModel(makeInitialBoard: false)
+        var board = GameRules.emptyBoard()
+        board[3][5] = PopBlock(direction: .right, tone: .mistBlue)
+        // A second, untouched block keeps the board non-empty so the matching pop below
+        // does not also trigger a board-clear bonus.
+        board[0][0] = PopBlock(direction: .up, tone: .mistBlue)
+        model.loadBoardForTesting(board)
+
+        // A flick against the arrow registers a miss: the block stays, the chain resets.
+        model.attemptPop(row: 3, column: 5, direction: .left, hapticsEnabled: false, soundEnabled: false)
+        XCTAssertNotNil(model.board[3][5])
+        XCTAssertEqual(model.chain, 0)
+        XCTAssertEqual(model.score, 0)
+
+        // A flick matching the arrow on an escapable block pops it.
+        model.attemptPop(row: 3, column: 5, direction: .right, hapticsEnabled: false, soundEnabled: false)
+        XCTAssertNil(model.board[3][5])
+        XCTAssertEqual(model.chain, 1)
+        XCTAssertEqual(model.score, 10)
+    }
+
+    func testTapDoesNotPopEscapableCell() {
+        // The board gesture only forwards a pop when a flick resolves to a direction; a tap
+        // (sub-threshold translation) resolves to nil and never reaches `attemptPop`.
+        XCTAssertNil(Direction.swipeDirection(for: .zero, minimumDistance: 14, axisBias: 1.16))
+        XCTAssertNil(Direction.swipeDirection(for: CGSize(width: 3, height: 4), minimumDistance: 14, axisBias: 1.16))
+        XCTAssertEqual(
+            Direction.swipeDirection(for: CGSize(width: 40, height: 3), minimumDistance: 14, axisBias: 1.16),
+            .right
+        )
+        XCTAssertEqual(
+            Direction.swipeDirection(for: CGSize(width: 2, height: -36), minimumDistance: 14, axisBias: 1.16),
+            .up
+        )
+    }
+
+    // MARK: - Sprint 1: ordered event queue (WI-1.2)
+
+    @MainActor
+    func testConcurrentRewardsEnqueueAll() {
+        let model = GameModel(makeInitialBoard: false)
+        var board = GameRules.emptyBoard()
+        // Three mutually non-blocking escapable blocks. Popping all three reaches chain 3
+        // (chain toast) and empties the board on the final pop (board-clear toast), so two
+        // events are produced by a single pop.
+        board[0][0] = PopBlock(direction: .up, tone: .mistBlue)
+        board[0][5] = PopBlock(direction: .up, tone: .mistBlue)
+        board[6][0] = PopBlock(direction: .down, tone: .lavenderMist)
+
+        model.loadBoardForTesting(board)
+        model.swipe(row: 0, column: 0, hapticsEnabled: false, soundEnabled: false)
+        model.swipe(row: 0, column: 5, hapticsEnabled: false, soundEnabled: false)
+        model.swipe(row: 6, column: 0, hapticsEnabled: false, soundEnabled: false)
+
+        XCTAssertEqual(model.chain, 3)
+        // The highest-priority event (board clear) is displayed first…
+        XCTAssertEqual(model.boardToast?.style, .clear)
+        // …while the lower-priority chain event is enqueued, not dropped.
+        XCTAssertTrue(model.queuedEventKinds.contains(.chain))
+    }
+
+    // MARK: - Sprint 1: off-main generation + guaranteed fallback (WI-1.3)
+
+    func testAsyncGeneratedBoardMatchesSyncForSeed() async {
+        let seed: UInt64 = 2_026_06_22
+        var sync = SeededRandomNumberGenerator(seed: seed)
+        let syncBoard = GameRules.generatedBoard(using: &sync, profile: .standard)
+        let asyncBoard = await GameRules.generatedBoardAsync(seed: seed, profile: .standard)
+
+        XCTAssertEqual(boardSignature(syncBoard), boardSignature(asyncBoard))
+    }
+
+    func testFinalFallbackBoardIsAlwaysClearable() {
+        let board = GameRules.guaranteedClearableBoard()
+
+        XCTAssertTrue(GameRules.isClearable(board))
+        XCTAssertGreaterThan(GameRules.openPositions(in: board).count, 0)
+        XCTAssertGreaterThanOrEqual(
+            GameRules.blockCount(in: board),
+            BoardGenerationProfile.standard.minimumOpenCells
+        )
     }
 
     private func boardSignature(_ board: [[PopBlock?]]) -> [[String]] {

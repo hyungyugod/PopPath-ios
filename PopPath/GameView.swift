@@ -21,13 +21,13 @@ struct GameView: View {
                 openPositions: game.openPositions,
                 escapingBlocks: game.escapingBlocks,
                 boardToast: game.boardToast,
-                chain: game.chain,
                 colorAssist: colorAssist,
                 reduceMotion: reduceMotion,
-                onTap: { row, column in
-                    game.tap(
+                onFlick: { row, column, direction in
+                    game.attemptPop(
                         row: row,
                         column: column,
+                        direction: direction,
                         hapticsEnabled: hapticsEnabled,
                         soundEnabled: soundEnabled
                     )
@@ -230,13 +230,15 @@ private struct BoardView: View {
     let openPositions: Set<BoardPosition>
     let escapingBlocks: [EscapingBlock]
     let boardToast: BoardToast?
-    let chain: Int
     let colorAssist: Bool
     let reduceMotion: Bool
-    let onTap: (Int, Int) -> Void
+    let onFlick: (Int, Int, Direction) -> Void
+
+    @State private var pressedCell: BoardPosition?
 
     private let gridSpacing: CGFloat = 7
     private let boardPadding: CGFloat = 11
+    private static let boardCoordinateSpace = "popPathBoard"
 
     private var columns: [GridItem] {
         Array(repeating: GridItem(.flexible(), spacing: gridSpacing), count: GameRules.columns)
@@ -256,40 +258,20 @@ private struct BoardView: View {
                             let row = index / GameRules.columns
                             let column = index % GameRules.columns
                             let position = BoardPosition(row: row, column: column)
-                            let escapeOffset = board[row][column]?.direction.escapeOffset(
-                                row: row,
-                                column: column,
-                                cellSize: cellSize,
-                                spacing: gridSpacing,
-                                padding: boardPadding
-                            ) ?? .zero
 
                             BoardCell(
                                 block: board[row][column],
                                 isOpen: openPositions.contains(position),
-                                escapeOffset: escapeOffset,
-                                chain: chain,
+                                isPressed: pressedCell == position,
                                 showOpenHint: colorAssist,
                                 reduceMotion: reduceMotion
                             )
-                            .contentShape(Rectangle())
-                            .instantTouch {
-                                onTap(row, column)
-                            }
                         }
                     }
 
                     ForEach(escapingBlocks) { escapingBlock in
-                        let escapeOffset = escapingBlock.block.direction.escapeOffset(
-                            row: escapingBlock.row,
-                            column: escapingBlock.column,
-                            cellSize: cellSize,
-                            spacing: gridSpacing,
-                            padding: boardPadding
-                        )
                         EscapingBlockView(
                             escapingBlock: escapingBlock,
-                            escapeOffset: escapeOffset,
                             cellSize: cellSize,
                             reduceMotion: reduceMotion
                         )
@@ -300,6 +282,9 @@ private struct BoardView: View {
                         .allowsHitTesting(false)
                     }
                 }
+                .coordinateSpace(name: Self.boardCoordinateSpace)
+                .contentShape(Rectangle())
+                .gesture(boardGesture(cellSize: cellSize))
                 .padding(boardPadding)
                 .frame(width: width)
                 .background(
@@ -320,49 +305,247 @@ private struct BoardView: View {
         }
         .aspectRatio(CGFloat(GameRules.columns) / CGFloat(GameRules.rows), contentMode: .fit)
     }
+
+    // One board-level drag gesture. The START cell is resolved from where the finger went
+    // down (so a flick that drifts across tiles still pops the tile it began on), and the
+    // flick is judged against that cell's arrow inside the model.
+    private func boardGesture(cellSize: CGFloat) -> some Gesture {
+        DragGesture(minimumDistance: 0, coordinateSpace: .named(Self.boardCoordinateSpace))
+            .onChanged { value in
+                if pressedCell == nil {
+                    pressedCell = cellPosition(at: value.startLocation, cellSize: cellSize)
+                }
+            }
+            .onEnded { value in
+                let start = cellPosition(at: value.startLocation, cellSize: cellSize)
+                pressedCell = nil
+                guard let start,
+                      let direction = resolvedSwipeDirection(value)
+                else {
+                    // A tap or a sub-threshold drag resolves to no direction → no-op.
+                    return
+                }
+                onFlick(start.row, start.column, direction)
+            }
+    }
+
+    private func cellPosition(at point: CGPoint, cellSize: CGFloat) -> BoardPosition? {
+        let stride = cellSize + gridSpacing
+        guard stride > 0 else { return nil }
+        let column = Int((point.x / stride).rounded(.down))
+        let row = Int((point.y / stride).rounded(.down))
+        guard (0..<GameRules.rows).contains(row),
+              (0..<GameRules.columns).contains(column)
+        else {
+            return nil
+        }
+        return BoardPosition(row: row, column: column)
+    }
+
+    private func resolvedSwipeDirection(_ value: DragGesture.Value) -> Direction? {
+        if let direction = Direction.swipeDirection(
+            for: value.translation,
+            minimumDistance: 14,
+            axisBias: 1.16
+        ) {
+            return direction
+        }
+        return Direction.swipeDirection(
+            for: value.predictedEndTranslation,
+            minimumDistance: 30,
+            axisBias: 1.08
+        )
+    }
 }
 
 private struct EscapingBlockView: View {
     let escapingBlock: EscapingBlock
-    let escapeOffset: CGSize
     let cellSize: CGFloat
     let reduceMotion: Bool
+    @State private var progress: CGFloat = 0
 
     var body: some View {
-        TimelineView(.animation(minimumInterval: 1.0 / 120.0)) { timeline in
-            let progress = escapeProgress(at: timeline.date)
-            let easedProgress = easeOutCubic(progress)
+        let visibleProgress = reduceMotion ? 1 : progress
+        let burstLevel = min(CGFloat(max(escapingBlock.chain, 1)) / 6 + 0.32, 1.18)
+        let ringProgress = ppSmoothStep(ppUnit((visibleProgress - 0.04) / 0.66))
+        let tileOpacity = 1 - ppSmoothStep(ppUnit((visibleProgress - 0.32) / 0.6))
 
-            ZStack {
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .fill(escapingBlock.block.tone.color)
-                    .shadow(color: Color.ppInkGray.opacity(0.11), radius: 8, x: 0, y: 4)
+        ZStack {
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .stroke(burstColor.opacity(Double((1 - ringProgress) * 0.7)), lineWidth: 2 + burstLevel * 2)
+                .scaleEffect(0.9 + ringProgress * (0.54 + burstLevel * 0.16))
+                .opacity(1 - ringProgress)
 
-                Image(systemName: escapingBlock.block.direction.symbolName)
-                    .font(.system(size: 18, weight: .bold, design: .rounded))
-                    .symbolRenderingMode(.monochrome)
-                    .foregroundStyle(Color.ppInkGray)
+            ForEach(0..<particleCount, id: \.self) { index in
+                PopBurstParticle(
+                    index: index,
+                    count: particleCount,
+                    progress: visibleProgress,
+                    cellSize: cellSize,
+                    direction: escapingBlock.block.direction,
+                    tone: escapingBlock.block.tone,
+                    burstColor: burstColor,
+                    intensity: burstLevel
+                )
             }
-            .frame(width: cellSize, height: cellSize)
-            .offset(reduceMotion ? .zero : escapeOffset.scaled(by: easedProgress))
-            .scaleEffect(1 - easedProgress * 0.12)
-            .opacity(1 - easedProgress * 0.32)
-            .zIndex(20)
+
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(escapingBlock.block.tone.color)
+                .overlay {
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .fill(Color.white.opacity(flashOpacity(visibleProgress)))
+                }
+
+            Image(systemName: escapingBlock.block.direction.symbolName)
+                .font(.system(size: 18, weight: .bold, design: .rounded))
+                .symbolRenderingMode(.monochrome)
+                .foregroundStyle(Color.ppInkGray)
+                .rotationEffect(.degrees(arrowRotation(visibleProgress)))
+        }
+        .frame(width: cellSize, height: cellSize)
+        .offset(releaseOffset(progress: visibleProgress, burstLevel: burstLevel))
+        .scaleEffect(popScale(visibleProgress))
+        .opacity(tileOpacity)
+        .zIndex(20)
+        .compositingGroup()
+        .onAppear {
+            guard !reduceMotion else {
+                progress = 1
+                return
+            }
+
+            withAnimation(.timingCurve(0.18, 0.82, 0.24, 1, duration: escapingBlock.duration)) {
+                progress = 1
+            }
         }
     }
 
-    private func escapeProgress(at date: Date) -> CGFloat {
-        guard !reduceMotion else { return 1 }
+    private func pulseScale(_ value: CGFloat) -> CGFloat {
+        if value < 0.22 {
+            return 1 + ppEaseOutCubic(value / 0.22) * (0.16 + min(CGFloat(escapingBlock.chain), 6) * 0.01)
+        }
 
-        let elapsed = date.timeIntervalSince(escapingBlock.startedAt)
-        let rawProgress = elapsed / max(escapingBlock.duration, 0.001)
-        return CGFloat(min(max(rawProgress, 0), 1))
+        let shrinkProgress = ppSmoothStep(ppUnit((value - 0.22) / 0.78))
+        return 1.16 - shrinkProgress * 1.0
     }
 
-    private func easeOutCubic(_ progress: CGFloat) -> CGFloat {
-        let remaining = 1 - progress
-        return 1 - remaining * remaining * remaining
+    private func popScale(_ value: CGFloat) -> CGFloat {
+        max(0.16, pulseScale(value))
     }
+
+    private var particleCount: Int {
+        escapingBlock.chain >= 5 ? 8 : 6
+    }
+
+    private var burstColor: Color {
+        .ppSoftCoral
+    }
+
+    private func flashOpacity(_ value: CGFloat) -> Double {
+        Double(max(0, 0.58 - value * 1.9))
+    }
+
+    private func arrowRotation(_ value: CGFloat) -> Double {
+        let direction: Double = escapingBlock.chain.isMultiple(of: 2) ? -1 : 1
+        return direction * Double(ppSmoothStep(ppUnit(value / 0.72))) * Double(min(escapingBlock.chain, 6)) * 3.0
+    }
+
+    private func releaseOffset(progress: CGFloat, burstLevel: CGFloat) -> CGSize {
+        guard !reduceMotion else { return .zero }
+
+        let slideProgress = ppEaseOutCubic(ppUnit(progress / 0.7))
+        let distance = cellSize * (0.34 + burstLevel * 0.18)
+        return escapingBlock.block.direction.vector.scaled(by: distance * slideProgress)
+    }
+}
+
+private struct PopBurstParticle: View {
+    let index: Int
+    let count: Int
+    let progress: CGFloat
+    let cellSize: CGFloat
+    let direction: Direction
+    let tone: BlockTone
+    let burstColor: Color
+    let intensity: CGFloat
+
+    var body: some View {
+        let delayedProgress = ppUnit((progress - delay) / (1 - delay))
+        let travelProgress = ppEaseOutCubic(delayedProgress)
+        let fadeProgress = ppSmoothStep(ppUnit((delayedProgress - 0.1) / 0.9))
+        let offset = burstOffset(progress: travelProgress)
+        let size = particleSize * (1 - fadeProgress * 0.48)
+
+        Circle()
+            .fill(particleColor.opacity(Double(1 - fadeProgress)))
+            .frame(width: size, height: size)
+            .offset(offset)
+            .scaleEffect(1 + (1 - fadeProgress) * 0.16)
+            .opacity(delayedProgress > 0 ? 1 : 0)
+    }
+
+    private var delay: CGFloat {
+        CGFloat(index % 3) * 0.035
+    }
+
+    private var particleSize: CGFloat {
+        cellSize * (0.09 + CGFloat(index % 3) * 0.018 + intensity * 0.018)
+    }
+
+    private var particleColor: Color {
+        switch index % 4 {
+        case 0:
+            return tone.color
+        case 1:
+            return burstColor
+        case 2:
+            return .white
+        default:
+            return .ppMintButtonText.opacity(0.72)
+        }
+    }
+
+    private func burstOffset(progress: CGFloat) -> CGSize {
+        let angle = baseAngle + spreadAngle
+        let distance = cellSize * (0.34 + intensity * 0.18 + CGFloat(index % 4) * 0.035)
+        let wobble = sin(Double(progress) * .pi) * Double(cellSize * 0.08) * (index.isMultiple(of: 2) ? 1 : -1)
+        let x = cos(angle) * Double(distance) * Double(progress) + cos(angle + .pi / 2) * wobble
+        let y = sin(angle) * Double(distance) * Double(progress) + sin(angle + .pi / 2) * wobble
+
+        return CGSize(width: CGFloat(x), height: CGFloat(y))
+    }
+
+    private var baseAngle: Double {
+        switch direction {
+        case .up:
+            return -.pi / 2
+        case .down:
+            return .pi / 2
+        case .left:
+            return .pi
+        case .right:
+            return 0
+        }
+    }
+
+    private var spreadAngle: Double {
+        let centeredIndex = Double(index) - Double(count - 1) / 2
+        return centeredIndex * 0.28
+    }
+}
+
+private func ppUnit(_ value: CGFloat) -> CGFloat {
+    min(max(value, 0), 1)
+}
+
+private func ppSmoothStep(_ value: CGFloat) -> CGFloat {
+    let value = ppUnit(value)
+    return value * value * (3 - 2 * value)
+}
+
+private func ppEaseOutCubic(_ value: CGFloat) -> CGFloat {
+    let remaining = 1 - ppUnit(value)
+    return 1 - remaining * remaining * remaining
 }
 
 private struct BoardCell: View {
@@ -370,8 +553,7 @@ private struct BoardCell: View {
 
     let block: PopBlock?
     let isOpen: Bool
-    let escapeOffset: CGSize
-    let chain: Int
+    let isPressed: Bool
     let showOpenHint: Bool
     let reduceMotion: Bool
     @State private var pulse = false
@@ -386,10 +568,15 @@ private struct BoardCell: View {
             }
         }
         .aspectRatio(1, contentMode: .fit)
+        .scaleEffect(pressScale)
+        .animation(reduceMotion ? nil : .spring(response: 0.2, dampingFraction: 0.62), value: isPressed)
         .onAppear {
             updatePulse()
         }
         .onChange(of: isOpen) { _, _ in
+            updatePulse()
+        }
+        .onChange(of: showOpenHint) { _, _ in
             updatePulse()
         }
     }
@@ -418,9 +605,6 @@ private struct BoardCell: View {
                     .offset(x: 14, y: -14)
             }
 
-            if block.isLeaving && !reduceMotion {
-                PopTrail(direction: block.direction, chain: chain)
-            }
         }
         .overlay {
             if showOpenHint && isOpen {
@@ -438,19 +622,21 @@ private struct BoardCell: View {
                     .stroke(Color.ppSoftCoral.opacity(0.75), lineWidth: 2)
             }
         }
-        .offset(block.isLeaving ? escapeOffset : .zero)
-        .scaleEffect(block.isLeaving ? 0.92 : 1)
-        .opacity(block.isLeaving ? 0.96 : 1)
-        .zIndex(block.isLeaving ? 10 : 1)
         .modifier(ShakeEffect(shakes: block.isMiss ? 2 : 0))
-        .animation(.easeIn(duration: reduceMotion ? 0.16 : 0.34), value: block.isLeaving)
         .animation(.linear(duration: 0.18), value: block.isMiss)
         .animation(reduceMotion ? nil : .easeInOut(duration: 1.05).repeatForever(autoreverses: true), value: pulse)
         .accessibilityLabel(accessibilityLabel(for: block))
     }
 
+    private var pressScale: CGFloat {
+        guard isPressed, block != nil, !reduceMotion else { return 1 }
+        return 0.94
+    }
+
     private func updatePulse() {
-        guard isOpen, !reduceMotion else {
+        // The pulsing highlight is only drawn when the colour-assist hint is on, so
+        // don't run a forever-repeating animation on every open cell otherwise.
+        guard isOpen, showOpenHint, !reduceMotion else {
             pulse = false
             return
         }
@@ -458,8 +644,18 @@ private struct BoardCell: View {
     }
 
     private func accessibilityLabel(for block: PopBlock) -> String {
-        let state = isOpen ? language.text("open path", "열린 길") : language.text("blocked", "막힌 길")
-        return "\(block.direction.accessibilityName(language: language)) \(language.text("arrow", "화살표")), \(state)"
+        let directionName = block.direction.accessibilityName(language: language)
+        if isOpen {
+            return language.text(
+                "Swipe \(directionName) to clear",
+                "\(directionName)으로 스와이프해서 제거"
+            )
+        }
+
+        return language.text(
+            "\(directionName) arrow, blocked",
+            "\(directionName) 화살표, 막힌 길"
+        )
     }
 }
 
@@ -554,41 +750,6 @@ private struct BoardToastView: View {
     }
 }
 
-private struct PopTrail: View {
-    let direction: Direction
-    let chain: Int
-
-    var body: some View {
-        ZStack {
-            ForEach(0..<3, id: \.self) { index in
-                Circle()
-                    .fill(color.opacity(0.72 - Double(index) * 0.14))
-                    .frame(width: 5 + CGFloat(index) * 2, height: 5 + CGFloat(index) * 2)
-                    .offset(trailOffset(for: index))
-            }
-        }
-        .opacity(chain > 1 ? 1 : 0.68)
-    }
-
-    private var color: Color {
-        chain >= 5 ? .ppSoftCoral : .ppFreshMint
-    }
-
-    private func trailOffset(for index: Int) -> CGSize {
-        let distance = CGFloat(index + 1) * 9
-        switch direction {
-        case .up:
-            return CGSize(width: CGFloat(index - 1) * 5, height: distance)
-        case .down:
-            return CGSize(width: CGFloat(index - 1) * 5, height: -distance)
-        case .left:
-            return CGSize(width: distance, height: CGFloat(index - 1) * 5)
-        case .right:
-            return CGSize(width: -distance, height: CGFloat(index - 1) * 5)
-        }
-    }
-}
-
 private struct ShakeEffect: GeometryEffect {
     var travelDistance: CGFloat = 4
     var shakes: CGFloat
@@ -603,31 +764,6 @@ private struct ShakeEffect: GeometryEffect {
             translationX: sin(shakes * .pi * 2) * travelDistance,
             y: 0
         ))
-    }
-}
-
-private struct InstantTouchModifier: ViewModifier {
-    let action: () -> Void
-    @State private var hasFired = false
-
-    func body(content: Content) -> some View {
-        content.highPriorityGesture(
-            DragGesture(minimumDistance: 0)
-                .onChanged { _ in
-                    guard !hasFired else { return }
-                    hasFired = true
-                    action()
-                }
-                .onEnded { _ in
-                    hasFired = false
-                }
-        )
-    }
-}
-
-private extension View {
-    func instantTouch(_ action: @escaping () -> Void) -> some View {
-        modifier(InstantTouchModifier(action: action))
     }
 }
 
@@ -647,24 +783,16 @@ private extension BlockTone {
 }
 
 private extension Direction {
-    func escapeOffset(
-        row: Int,
-        column: Int,
-        cellSize: CGFloat,
-        spacing: CGFloat,
-        padding: CGFloat
-    ) -> CGSize {
-        let stride = cellSize + spacing
-
+    var vector: CGSize {
         switch self {
         case .up:
-            return CGSize(width: 0, height: -padding - CGFloat(row + 1) * stride)
+            return CGSize(width: 0, height: -1)
         case .down:
-            return CGSize(width: 0, height: padding + CGFloat(GameRules.rows - row) * stride)
+            return CGSize(width: 0, height: 1)
         case .left:
-            return CGSize(width: -padding - CGFloat(column + 1) * stride, height: 0)
+            return CGSize(width: -1, height: 0)
         case .right:
-            return CGSize(width: padding + CGFloat(GameRules.columns - column) * stride, height: 0)
+            return CGSize(width: 1, height: 0)
         }
     }
 

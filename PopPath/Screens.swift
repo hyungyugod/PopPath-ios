@@ -36,7 +36,7 @@ struct HomeView: View {
                 .minimumScaleFactor(0.82)
                 .accessibilityLabel("PopPath")
 
-                Text(language.text("Open the path. Pop the chain.", "길을 열고, 체인 팡!"))
+                Text(language.text("Swipe the path. Chain the pop.", "길을 밀고, 체인 팡!"))
                     .font(.ppDisplay(15, weight: .medium, language: language))
                     .foregroundStyle(Color.ppWarmGray)
                     .lineLimit(1)
@@ -446,7 +446,7 @@ struct RecordsView: View {
                     RecordMetricTile(title: language.text("Average", "평균"), value: stats.averageScore.formatted(), icon: "chart.line.uptrend.xyaxis")
                     RecordMetricTile(title: language.text("Best Chain", "최고 체인"), value: "×\(stats.bestChain)", icon: "link")
                     RecordMetricTile(title: language.text("Accuracy", "정확도"), value: "\(stats.bestAccuracy)%", icon: "scope")
-                    RecordMetricTile(title: language.text("Pops", "팡"), value: stats.totalPops.formatted(), icon: "hand.tap.fill")
+                    RecordMetricTile(title: language.text("Swipes", "스와이프"), value: stats.totalPops.formatted(), icon: "hand.draw.fill")
                     RecordMetricTile(title: language.text("Unlocks", "길 열림"), value: stats.totalUnlocks.formatted(), icon: "key.fill")
                     RecordMetricTile(title: language.text("Board Clears", "싹쓸이"), value: stats.totalBoardClears.formatted(), icon: "rectangle.grid.2x2.fill")
                     RecordMetricTile(title: language.text("Daily Best", "오늘 최고"), value: stats.bestDailyScore.formatted(), icon: "calendar")
@@ -576,7 +576,7 @@ private extension Achievement {
 
         switch id {
         case "first_run":
-            return "첫 팡"
+            return "첫 스와이프"
         case "score_500":
             return "워밍업"
         case "score_1000":
@@ -598,7 +598,7 @@ private extension Achievement {
         case "ten_rounds":
             return "열 판째!"
         case "hundred_pops":
-            return "백 번 팡"
+            return "백 번 스와이프"
         default:
             return title
         }
@@ -631,7 +631,7 @@ private extension Achievement {
         case "ten_rounds":
             return "10판 마무리"
         case "hundred_pops":
-            return "블록 100개 팡"
+            return "블록 100개 스와이프"
         default:
             return subtitle
         }
@@ -737,11 +737,11 @@ struct TutorialView: View {
                     }
 
                 if index == highlightedIndex {
-                    Image(systemName: "hand.tap.fill")
+                    Image(systemName: "hand.draw.fill")
                         .font(.system(size: 26, weight: .semibold))
                         .foregroundStyle(Color.ppInkGray)
                         .shadow(color: Color.ppInkGray.opacity(0.18), radius: 6, x: 0, y: 4)
-                        .offset(x: 12, y: 15)
+                        .offset(tutorialHandOffset(for: arrow))
                 }
             }
         } else {
@@ -760,22 +760,36 @@ struct TutorialView: View {
     private var title: String {
         switch currentStep {
         case 0:
-            return language.text("Trace the arrow to the edge", "화살표를 끝까지 톡!")
+            return language.text("Swipe with the arrow", "화살표 방향으로 스와이프")
         case 1:
-            return language.text("Clear paths to unlock more", "막힌 길을 하나씩 열어요")
+            return language.text("Swipe clear paths to unlock more", "뚫린 길을 밀어내요")
         default:
-            return language.text("Chain clean pops for a high score", "연속 팡으로 점수 쑥!")
+            return language.text("Chain clean swipes for a high score", "연속 스와이프로 점수 쑥!")
         }
     }
 
     private var subtitle: String {
         switch currentStep {
         case 0:
-            return language.text("Find a clear path.", "가장자리까지 뚫린 길을 찾아요")
+            return language.text("Only the arrow direction clears a block.", "화살표 방향으로 밀어야 사라져요")
         case 1:
-            return language.text("A good order opens new paths.", "순서를 잘 고르면 길이 생겨요")
+            return language.text("A good order opens new swipe paths.", "순서를 잘 고르면 새 길이 생겨요")
         default:
-            return language.text("Every clean pop keeps the chain alive.", "막히지 않고 터뜨리면 체인이 이어져요")
+            return language.text("Every clean swipe keeps the chain alive.", "막히지 않고 밀어내면 체인이 이어져요")
+        }
+    }
+
+    private func tutorialHandOffset(for arrow: String) -> CGSize {
+        let distance: CGFloat = pulse && !reduceMotion ? 18 : 10
+        switch arrow {
+        case "▲":
+            return CGSize(width: 10, height: 16 - distance)
+        case "▼":
+            return CGSize(width: 10, height: 4 + distance)
+        case "◀":
+            return CGSize(width: 16 - distance, height: 14)
+        default:
+            return CGSize(width: 4 + distance, height: 14)
         }
     }
 
@@ -867,12 +881,12 @@ struct SettingsView: View {
                 LanguageSettingRow(language: $language)
                 SettingRow(
                     title: appLanguage.text("Sound", "사운드"),
-                    subtitle: appLanguage.text("Soft taps and round chimes", "탭과 라운드 효과음을 재생해요"),
+                    subtitle: appLanguage.text("Soft swipes and round chimes", "스와이프와 라운드 효과음을 재생해요"),
                     isOn: $soundEnabled
                 )
                 SettingRow(
                     title: appLanguage.text("Haptics", "진동"),
-                    subtitle: appLanguage.text("Gentle feedback on every pop", "팝마다 짧은 손맛을 줘요"),
+                    subtitle: appLanguage.text("Gentle feedback on every swipe", "스와이프마다 짧은 손맛을 줘요"),
                     isOn: $hapticsEnabled
                 )
                 SettingRow(

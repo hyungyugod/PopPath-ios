@@ -95,18 +95,18 @@ struct Achievement: Identifiable, Equatable {
 
 enum AchievementCatalog {
     static let all: [Achievement] = [
-        Achievement(id: "first_run", title: "First Pop", subtitle: "Finish a round", systemImage: "flag.fill"),
+        Achievement(id: "first_run", title: "First Swipe", subtitle: "Finish a round", systemImage: "flag.fill"),
         Achievement(id: "score_500", title: "Warmed Up", subtitle: "Score 500+", systemImage: "flame.fill"),
         Achievement(id: "score_1000", title: "Path Master", subtitle: "Score 1,000+", systemImage: "star.fill"),
         Achievement(id: "chain_5", title: "Clean Chain", subtitle: "Reach chain x5", systemImage: "link"),
         Achievement(id: "chain_10", title: "Flow State", subtitle: "Reach chain x10", systemImage: "sparkles"),
         Achievement(id: "clean_run", title: "No Misses", subtitle: "Finish with no misses", systemImage: "checkmark.seal.fill"),
         Achievement(id: "unlock_5", title: "Key Finder", subtitle: "Open 5 paths in one round", systemImage: "key.fill"),
-        Achievement(id: "path_burst", title: "Path Burst", subtitle: "Open 3 paths with one pop", systemImage: "bolt.fill"),
+        Achievement(id: "path_burst", title: "Path Burst", subtitle: "Open 3 paths with one swipe", systemImage: "bolt.fill"),
         Achievement(id: "clear_2", title: "Board Sweeper", subtitle: "Clear 2 boards in one round", systemImage: "rectangle.grid.2x2.fill"),
         Achievement(id: "daily_first", title: "Daily Ritual", subtitle: "Finish a Daily Challenge", systemImage: "calendar"),
         Achievement(id: "ten_rounds", title: "Ten Runs", subtitle: "Finish 10 rounds", systemImage: "10.circle.fill"),
-        Achievement(id: "hundred_pops", title: "Hundred Pops", subtitle: "Pop 100 blocks", systemImage: "circle.grid.cross.fill")
+        Achievement(id: "hundred_pops", title: "Hundred Swipes", subtitle: "Swipe 100 blocks", systemImage: "circle.grid.cross.fill")
     ]
 
     static func newlyUnlocked(
@@ -221,9 +221,40 @@ struct BoardToast: Identifiable, Equatable {
     let style: Style
 }
 
+/// A single reward/announcement produced by the board. Drained by one ordered queue so
+/// concurrent rewards (chain + unlock + clear from one pop) all surface in priority order
+/// instead of clobbering a single slot. `announce` carries the VoiceOver string consumed in
+/// a later sprint; nothing reads it yet.
+struct BoardEvent: Identifiable, Equatable {
+    enum Kind: Int, Comparable {
+        case chain
+        case freshPath
+        case unlock
+        case clear
+
+        static func < (lhs: Kind, rhs: Kind) -> Bool {
+            lhs.rawValue < rhs.rawValue
+        }
+    }
+
+    let id = UUID()
+    let kind: Kind
+    let title: String
+    let detail: String
+    let style: BoardToast.Style
+    var announce: String?
+    let duration: UInt64
+}
+
 @MainActor
 final class GameModel: ObservableObject {
-    @Published private(set) var board: [[PopBlock?]]
+    @Published private(set) var board: [[PopBlock?]] {
+        didSet { openPositions = GameRules.openPositions(in: board) }
+    }
+    /// Cached escapable positions. Recomputing this is O(rows·cols·max(rows,cols)),
+    /// so we update it only when `board` changes instead of on every SwiftUI body
+    /// pass (the per-second timer tick and every score/chain change re-render the view).
+    private(set) var openPositions: Set<BoardPosition> = []
     @Published private(set) var score = 0
     @Published private(set) var chain = 0
     @Published private(set) var maxChain = 0
@@ -233,7 +264,12 @@ final class GameModel: ObservableObject {
     @Published private(set) var dailyBest: Int
     @Published private(set) var mode: GameMode = .classic
     @Published private(set) var dailyChallenge: DailyChallenge
+    /// The toast currently on screen — the head of the ordered event queue. Kept as the
+    /// published mirror that `GameView` renders and tests inspect.
     @Published private(set) var boardToast: BoardToast?
+    /// True while a board is being (re)dealt. Gates input so a stray flick during the
+    /// async deal window can never pop into a half-replaced board.
+    @Published private(set) var isDealing = false
     @Published private(set) var stats: PlayerStats
     @Published private(set) var escapingBlocks: [EscapingBlock] = []
     @Published var roundSummary: RoundSummary?
@@ -251,10 +287,7 @@ final class GameModel: ObservableObject {
     private var boardDealIndex = 0
     private var recentBoardSignatures: [String] = []
     private var roundMetrics = RoundMetrics.zero
-
-    var openPositions: Set<BoardPosition> {
-        GameRules.openPositions(in: board)
-    }
+    private var pendingEvents: [BoardEvent] = []
 
     init(makeInitialBoard: Bool = true) {
         let challenge = DailyChallenge.today()
@@ -262,7 +295,9 @@ final class GameModel: ObservableObject {
         self.dailyChallenge = challenge
         self.stats = loadedStats
         self.recentBoardSignatures = Self.loadRecentBoardSignatures()
-        self.board = makeInitialBoard ? GameRules.generatedBoard() : GameRules.emptyBoard()
+        let initialBoard = makeInitialBoard ? GameRules.generatedBoard() : GameRules.emptyBoard()
+        self.board = initialBoard
+        self.openPositions = GameRules.openPositions(in: initialBoard)
 
         let storedBest = UserDefaults.standard.object(forKey: Self.bestScoreStorageKey) as? Int
         self.best = max(storedBest ?? 0, loadedStats.bestScore)
@@ -322,7 +357,9 @@ final class GameModel: ObservableObject {
         board = makeBoard(for: mode)
         time = GameRules.roundSeconds
         running = true
+        isDealing = false
         boardToast = nil
+        pendingEvents = []
         roundSummary = nil
 
         startTimer()
@@ -334,12 +371,14 @@ final class GameModel: ObservableObject {
 
     func abandonRound() {
         running = false
+        isDealing = false
         timerTask?.cancel()
         chainResetTask?.cancel()
         boardRefreshTask?.cancel()
         toastTask?.cancel()
         chain = 0
         boardToast = nil
+        pendingEvents = []
         escapingBlocks = []
         roundSummary = nil
     }
@@ -351,36 +390,55 @@ final class GameModel: ObservableObject {
         SoundEffects.shared.prepare(enabled: soundEnabled)
     }
 
-    func tap(row: Int, column: Int, hapticsEnabled: Bool, soundEnabled: Bool = false) {
+    /// Direction-true pop: a flick clears a block only when it matches the block's arrow
+    /// AND the block has a clear runway to the edge. A matching flick into a blocked block,
+    /// or any wrong-direction flick, registers a miss. The board gesture only forwards a
+    /// resolved flick here — a tap never reaches this method.
+    func attemptPop(
+        row: Int,
+        column: Int,
+        direction: Direction,
+        hapticsEnabled: Bool,
+        soundEnabled: Bool = false
+    ) {
         guard running,
+              !isDealing,
               GameRules.isInside(row: row, column: column),
-              var block = board[row][column],
-              !block.isLeaving
+              var block = board[row][column]
         else {
             return
         }
 
-        if GameRules.isEscapable(on: board, row: row, column: column) {
-            let openBeforeRemoval = GameRules.openPositions(in: board)
+        if direction == block.direction,
+           GameRules.isEscapable(on: board, row: row, column: column) {
+            let openBeforeRemoval = openPositions
             let blockID = block.id
-            let escapingBlock = EscapingBlock(id: blockID, block: block, row: row, column: column)
-            escapingBlocks.append(escapingBlock)
+            let nextChain = chain + 1
+            let escapingBlock = EscapingBlock(
+                id: blockID,
+                block: block,
+                row: row,
+                column: column,
+                chain: nextChain
+            )
+            addEscapingBlock(escapingBlock)
             updateCell(row: row, column: column, with: nil)
 
             roundMetrics.pops += 1
-            chain += 1
+            chain = nextChain
             score += 10 * chain
             maxChain = max(maxChain, chain)
             let feedbackEvent = feedbackEvent(for: chain)
-            Haptics.play(feedbackEvent, enabled: hapticsEnabled)
-            SoundEffects.shared.play(feedbackEvent, enabled: soundEnabled)
             showChainToastIfNeeded()
             scheduleChainReset()
             awardUnlockBonusIfNeeded(openBeforeRemoval: openBeforeRemoval)
             resolveBoardAfterRemoval()
+            queueFeedback(feedbackEvent, hapticsEnabled: hapticsEnabled, soundEnabled: soundEnabled)
+            // All rewards from this pop are now enqueued; surface the highest-priority one.
+            drainEventQueue()
 
             Task { [weak self] in
-                let lifetime = UInt64((escapingBlock.duration + 0.035) * 1_000_000_000)
+                let lifetime = UInt64((escapingBlock.duration + 0.025) * 1_000_000_000)
                 try? await Task.sleep(nanoseconds: lifetime)
                 self?.removeEscapingBlock(id: blockID)
             }
@@ -391,8 +449,7 @@ final class GameModel: ObservableObject {
 
             block.isMiss = true
             updateCell(row: row, column: column, with: block)
-            Haptics.play(.miss, enabled: hapticsEnabled)
-            SoundEffects.shared.play(.miss, enabled: soundEnabled)
+            queueFeedback(.miss, hapticsEnabled: hapticsEnabled, soundEnabled: soundEnabled)
 
             let blockID = block.id
             Task { [weak self] in
@@ -402,15 +459,40 @@ final class GameModel: ObservableObject {
         }
     }
 
+    /// Legacy entry point: delegates to `attemptPop` using the block's own arrow, so a
+    /// successful escapable block always pops. Preserves existing call sites and tests.
+    func swipe(
+        row: Int,
+        column: Int,
+        hapticsEnabled: Bool,
+        soundEnabled: Bool = false
+    ) {
+        guard GameRules.isInside(row: row, column: column),
+              let direction = board[row][column]?.direction
+        else {
+            return
+        }
+
+        attemptPop(
+            row: row,
+            column: column,
+            direction: direction,
+            hapticsEnabled: hapticsEnabled,
+            soundEnabled: soundEnabled
+        )
+    }
+
     func finishRound(hapticsEnabled: Bool? = nil, soundEnabled: Bool? = nil) {
         guard running else { return }
 
         running = false
+        isDealing = false
         timerTask?.cancel()
         chainResetTask?.cancel()
         boardRefreshTask?.cancel()
         toastTask?.cancel()
         escapingBlocks = []
+        pendingEvents = []
 
         let completedMetrics = roundMetrics
         let previousStats = stats
@@ -444,8 +526,11 @@ final class GameModel: ObservableObject {
         stats = updatedStats
         Self.saveStats(updatedStats)
 
-        Haptics.play(.finish, enabled: hapticsEnabled ?? feedbackHapticsEnabled)
-        SoundEffects.shared.play(.finish, enabled: soundEnabled ?? feedbackSoundEnabled)
+        queueFeedback(
+            .finish,
+            hapticsEnabled: hapticsEnabled ?? feedbackHapticsEnabled,
+            soundEnabled: soundEnabled ?? feedbackSoundEnabled
+        )
         roundSummary = RoundSummary(
             score: score,
             best: best,
@@ -482,11 +567,19 @@ final class GameModel: ObservableObject {
         self.maxChain = 0
         self.time = GameRules.roundSeconds
         self.running = running
+        self.isDealing = false
         self.boardDealIndex = 0
         self.roundMetrics = .zero
         self.boardToast = nil
+        self.pendingEvents = []
         self.escapingBlocks = []
         self.roundSummary = nil
+    }
+
+    /// Test-only view of the queued (not-yet-displayed) events, so a test can assert that
+    /// concurrent rewards were all enqueued rather than dropped.
+    var queuedEventKinds: [BoardEvent.Kind] {
+        pendingEvents.map(\.kind)
     }
     #endif
 
@@ -530,14 +623,23 @@ final class GameModel: ObservableObject {
 
     private func removeBlock(id: UUID, row: Int, column: Int) {
         guard board[row][column]?.id == id else { return }
-        let openBeforeRemoval = GameRules.openPositions(in: board)
+        let openBeforeRemoval = openPositions
         updateCell(row: row, column: column, with: nil)
         awardUnlockBonusIfNeeded(openBeforeRemoval: openBeforeRemoval)
         resolveBoardAfterRemoval()
+        drainEventQueue()
     }
 
     private func removeEscapingBlock(id: UUID) {
         escapingBlocks.removeAll { $0.id == id }
+    }
+
+    private func addEscapingBlock(_ escapingBlock: EscapingBlock) {
+        escapingBlocks.append(escapingBlock)
+        let maximumVisibleEffects = 8
+        if escapingBlocks.count > maximumVisibleEffects {
+            escapingBlocks.removeFirst(escapingBlocks.count - maximumVisibleEffects)
+        }
     }
 
     private func clearMiss(id: UUID, row: Int, column: Int) {
@@ -576,21 +678,12 @@ final class GameModel: ObservableObject {
     }
 
     private func makeClassicBoard(profile: BoardGenerationProfile) -> [[PopBlock?]] {
-        let recentSignatures = Set(recentBoardSignatures)
-        var fallback = GameRules.generatedBoard(profile: profile)
-
-        for attempt in 0..<24 {
-            let candidate = attempt == 0 ? fallback : GameRules.generatedBoard(profile: profile)
-            let signature = GameRules.boardSignature(candidate)
-            if !recentSignatures.contains(signature) {
-                rememberClassicBoard(candidate)
-                return candidate
-            }
-            fallback = candidate
-        }
-
-        rememberClassicBoard(fallback)
-        return fallback
+        let board = GameRules.classicBoard(
+            profile: profile,
+            recentSignatures: Set(recentBoardSignatures)
+        )
+        rememberClassicBoard(board)
+        return board
     }
 
     private func rememberClassicBoard(_ board: [[PopBlock?]]) {
@@ -612,11 +705,19 @@ final class GameModel: ObservableObject {
         if remainingBlocks == 0 {
             awardBoardClearBonus()
             scheduleBoardRefresh(reason: .clear)
-        } else if !GameRules.hasPlayableMove(in: board) {
+        } else if openPositions.isEmpty {
             roundMetrics.freshPaths += 1
-            Haptics.play(.freshPath, enabled: feedbackHapticsEnabled)
-            SoundEffects.shared.play(.freshPath, enabled: feedbackSoundEnabled)
-            showToast(BoardToast(title: "FRESH PATH", detail: "NO MOVES", style: .freshPath), duration: 850_000_000)
+            queueFeedback(.freshPath, hapticsEnabled: feedbackHapticsEnabled, soundEnabled: feedbackSoundEnabled)
+            enqueueEvent(
+                BoardEvent(
+                    kind: .freshPath,
+                    title: "FRESH PATH",
+                    detail: "NO MOVES",
+                    style: .freshPath,
+                    announce: "Fresh path. No moves left.",
+                    duration: 850_000_000
+                )
+            )
             scheduleBoardRefresh(reason: .freshPath)
         }
     }
@@ -625,15 +726,23 @@ final class GameModel: ObservableObject {
         roundMetrics.boardClears += 1
         let bonus = 180 + min(max(chain, 1), 10) * 20
         score += bonus
-        Haptics.play(.boardClear, enabled: feedbackHapticsEnabled)
-        SoundEffects.shared.play(.boardClear, enabled: feedbackSoundEnabled)
-        showToast(BoardToast(title: "BOARD CLEAR", detail: "+\(bonus)", style: .clear), duration: 950_000_000)
+        queueFeedback(.boardClear, hapticsEnabled: feedbackHapticsEnabled, soundEnabled: feedbackSoundEnabled)
+        enqueueEvent(
+            BoardEvent(
+                kind: .clear,
+                title: "BOARD CLEAR",
+                detail: "+\(bonus)",
+                style: .clear,
+                announce: "Board clear. Plus \(bonus).",
+                duration: 950_000_000
+            )
+        )
     }
 
     private func awardUnlockBonusIfNeeded(openBeforeRemoval: Set<BoardPosition>) {
         guard running else { return }
 
-        let newlyOpened = GameRules.openPositions(in: board).subtracting(openBeforeRemoval).count
+        let newlyOpened = openPositions.subtracting(openBeforeRemoval).count
         guard newlyOpened > 0 else { return }
 
         roundMetrics.unlocks += newlyOpened
@@ -642,11 +751,17 @@ final class GameModel: ObservableObject {
         let bonus = newlyOpened * 7 * max(chain, 1)
         score += bonus
         let feedbackEvent: Haptics.Event = newlyOpened >= 3 ? .bigChain : .unlock
-        Haptics.play(feedbackEvent, enabled: feedbackHapticsEnabled)
-        SoundEffects.shared.play(feedbackEvent, enabled: feedbackSoundEnabled)
-        showToast(
-            BoardToast(title: unlockTitle(for: newlyOpened), detail: "+\(bonus)", style: .unlock),
-            duration: newlyOpened >= 3 ? 820_000_000 : 620_000_000
+        queueFeedback(feedbackEvent, hapticsEnabled: feedbackHapticsEnabled, soundEnabled: feedbackSoundEnabled)
+        let title = unlockTitle(for: newlyOpened)
+        enqueueEvent(
+            BoardEvent(
+                kind: .unlock,
+                title: title,
+                detail: "+\(bonus)",
+                style: .unlock,
+                announce: "\(title). Plus \(bonus).",
+                duration: newlyOpened >= 3 ? 820_000_000 : 620_000_000
+            )
         )
     }
 
@@ -670,17 +785,54 @@ final class GameModel: ObservableObject {
         boardRefreshTask = Task { [weak self] in
             try? await Task.sleep(nanoseconds: reason == .clear ? 260_000_000 : 220_000_000)
             if Task.isCancelled { return }
-            self?.dealNextBoard()
+            await self?.dealNextBoard()
         }
     }
 
-    private func dealNextBoard() {
+    private func dealNextBoard() async {
         guard running else { return }
 
+        // Gate input precisely across the board-replacement window — the off-main
+        // generation plus the main-actor assignment — so a flick can never land in a
+        // half-swapped board. (During the scheduled delay before this runs the board is
+        // either empty or fully blocked, so leaving input open there is harmless.)
+        isDealing = true
         boardDealIndex += 1
+        let level = currentDifficultyLevel
+        roundMetrics.difficultyPeak = max(roundMetrics.difficultyPeak, level)
+        let profile = BoardGenerationProfile.difficulty(level: level)
+        let dealMode = mode
+
+        // Heavy generation runs off the main actor so a chained clear never hitches the
+        // running timer. The difficulty level is captured on the main actor first, so the
+        // dealt board is identical to the old synchronous path (no balance change).
+        let nextBoard: [[PopBlock?]]
+        switch dealMode {
+        case .classic:
+            let recentSignatures = Set(recentBoardSignatures)
+            nextBoard = await Task.detached(priority: .userInitiated) {
+                GameRules.classicBoard(profile: profile, recentSignatures: recentSignatures)
+            }.value
+        case .daily:
+            nextBoard = await GameRules.generatedBoardAsync(
+                seed: seedForDailyDeal(),
+                profile: profile
+            )
+        }
+
+        // Bail if the round ended or a newer deal superseded this one during generation.
+        guard running, !Task.isCancelled else {
+            isDealing = false
+            return
+        }
+
+        if dealMode == .classic {
+            rememberClassicBoard(nextBoard)
+        }
         escapingBlocks = []
-        board = makeBoard(for: mode)
+        board = nextBoard
         boardRefreshTask = nil
+        isDealing = false
     }
 
     private func feedbackEvent(for chain: Int) -> Haptics.Event {
@@ -690,7 +842,15 @@ final class GameModel: ObservableObject {
         if chain >= 2 {
             return .chain
         }
-        return .escape
+        return .chain
+    }
+
+    private func queueFeedback(_ event: Haptics.Event, hapticsEnabled: Bool, soundEnabled: Bool) {
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 10_000_000)
+            Haptics.play(event, enabled: hapticsEnabled)
+            SoundEffects.shared.play(event, enabled: soundEnabled)
+        }
     }
 
     private func showChainToastIfNeeded() {
@@ -704,20 +864,49 @@ final class GameModel: ObservableObject {
         } else {
             title = "CHAIN"
         }
-        showToast(
-            BoardToast(title: title, detail: "×\(chain)", style: .chain),
-            duration: chain >= 7 ? 820_000_000 : chain >= 5 ? 720_000_000 : 560_000_000
+        enqueueEvent(
+            BoardEvent(
+                kind: .chain,
+                title: title,
+                detail: "×\(chain)",
+                style: .chain,
+                announce: "\(title) times \(chain).",
+                duration: chain >= 7 ? 820_000_000 : chain >= 5 ? 720_000_000 : 560_000_000
+            )
         )
     }
 
-    private func showToast(_ toast: BoardToast, duration: UInt64) {
+    /// Appends an event, coalescing by kind (latest of each kind wins) and capping the
+    /// queue. Does not start display — the caller drains once all of a pop's events land,
+    /// so the highest-priority one shows first.
+    private func enqueueEvent(_ event: BoardEvent) {
+        pendingEvents.removeAll { $0.kind == event.kind }
+        pendingEvents.append(event)
+        let maximumQueued = 4
+        if pendingEvents.count > maximumQueued {
+            pendingEvents.removeFirst(pendingEvents.count - maximumQueued)
+        }
+    }
+
+    /// Shows the highest-priority pending event (clear > unlock > freshPath > chain) when no
+    /// toast is on screen, then schedules the next drain when it expires.
+    private func drainEventQueue() {
+        guard boardToast == nil else { return }
+        guard let next = pendingEvents.max(by: { $0.kind < $1.kind }) else { return }
+        pendingEvents.removeAll { $0.id == next.id }
+
+        let toast = BoardToast(title: next.title, detail: next.detail, style: next.style)
+        let duration = next.duration
         boardToast = toast
         toastTask?.cancel()
         toastTask = Task { [weak self] in
             try? await Task.sleep(nanoseconds: duration)
             if Task.isCancelled { return }
-            guard self?.boardToast?.id == toast.id else { return }
-            self?.boardToast = nil
+            guard let self else { return }
+            if self.boardToast?.id == toast.id {
+                self.boardToast = nil
+            }
+            self.drainEventQueue()
         }
     }
 

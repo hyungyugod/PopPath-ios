@@ -25,6 +25,27 @@ enum Direction: CaseIterable, Codable {
         case .right: (0, 1)
         }
     }
+
+    /// Resolves a drag translation into a cardinal flick direction, or `nil` when the
+    /// gesture is a tap / too diagonal to be decisive. Defined once here so every input
+    /// surface (board gesture, tutorial gate, VoiceOver) judges flicks identically.
+    static func swipeDirection(
+        for translation: CGSize,
+        minimumDistance: CGFloat,
+        axisBias: CGFloat
+    ) -> Direction? {
+        let absoluteX = abs(translation.width)
+        let absoluteY = abs(translation.height)
+        guard max(absoluteX, absoluteY) >= minimumDistance else { return nil }
+
+        if absoluteX > absoluteY * axisBias {
+            return translation.width > 0 ? .right : .left
+        }
+        if absoluteY > absoluteX * axisBias {
+            return translation.height > 0 ? .down : .up
+        }
+        return nil
+    }
 }
 
 enum BlockTone: CaseIterable, Codable {
@@ -36,7 +57,6 @@ struct PopBlock: Identifiable, Equatable, Codable {
     var id = UUID()
     var direction: Direction
     var tone: BlockTone
-    var isLeaving = false
     var isMiss = false
 }
 
@@ -50,6 +70,7 @@ struct EscapingBlock: Identifiable, Equatable {
     let block: PopBlock
     let row: Int
     let column: Int
+    let chain: Int
     let startedAt: Date
     let duration: TimeInterval
 
@@ -58,13 +79,15 @@ struct EscapingBlock: Identifiable, Equatable {
         block: PopBlock,
         row: Int,
         column: Int,
+        chain: Int = 1,
         startedAt: Date = .now,
-        duration: TimeInterval = 0.11
+        duration: TimeInterval = 0.18
     ) {
         self.id = id
         self.block = block
         self.row = row
         self.column = column
+        self.chain = chain
         self.startedAt = startedAt
         self.duration = duration
     }
@@ -245,7 +268,10 @@ enum GameRules {
             return bestBoard
         }
 
-        return repairedBoard
+        // D8: never hand back a board that cannot be cleared. A ring of outward-pointing
+        // edge blocks is escapable from every edge cell, so it is always clearable and
+        // always leaves playable moves — a humane last-resort floor.
+        return guaranteedClearableBoard()
     }
 
     static func generatedBoard() -> [[PopBlock?]] {
@@ -256,6 +282,54 @@ enum GameRules {
     static func generatedBoard(profile: BoardGenerationProfile) -> [[PopBlock?]] {
         var random = SystemRandomNumberGenerator()
         return generatedBoard(using: &random, profile: profile)
+    }
+
+    /// Generates a seeded board off the main actor. Uses the same RNG and draw order as
+    /// the synchronous path, so a given seed yields a byte-identical board (determinism is
+    /// preserved for the Daily challenge).
+    static func generatedBoardAsync(
+        seed: UInt64,
+        profile: BoardGenerationProfile = .standard
+    ) async -> [[PopBlock?]] {
+        await Task.detached(priority: .userInitiated) {
+            var random = SeededRandomNumberGenerator(seed: seed)
+            return generatedBoard(using: &random, profile: profile)
+        }.value
+    }
+
+    /// Pure Classic-board picker: draws candidates until one is not in `recentSignatures`,
+    /// falling back to the last candidate. Pulled out of `GameModel` so it can run off the
+    /// main actor; signature bookkeeping stays on the model.
+    static func classicBoard(
+        profile: BoardGenerationProfile,
+        recentSignatures: Set<String>,
+        attempts: Int = 24
+    ) -> [[PopBlock?]] {
+        var fallback = generatedBoard(profile: profile)
+
+        for attempt in 0..<max(attempts, 1) {
+            let candidate = attempt == 0 ? fallback : generatedBoard(profile: profile)
+            let signature = boardSignature(candidate)
+            if !recentSignatures.contains(signature) {
+                return candidate
+            }
+            fallback = candidate
+        }
+
+        return fallback
+    }
+
+    /// A board whose every block sits on the edge it points toward, so each one can escape
+    /// immediately regardless of the others — guaranteed clearable, guaranteed playable.
+    static func guaranteedClearableBoard() -> [[PopBlock?]] {
+        var board = emptyBoard()
+        for position in edgePositions() {
+            board[position.row][position.column] = PopBlock(
+                direction: outwardDirection(for: position),
+                tone: tone(for: position)
+            )
+        }
+        return board
     }
 
     static func blockCount(in board: [[PopBlock?]]) -> Int {
@@ -346,8 +420,7 @@ enum GameRules {
 
     static func isEscapable(on board: [[PopBlock?]], row: Int, column: Int) -> Bool {
         guard isInside(row: row, column: column),
-              let block = board[row][column],
-              !block.isLeaving
+              let block = board[row][column]
         else {
             return false
         }
@@ -581,17 +654,20 @@ enum Haptics {
 final class SoundEffects {
     static let shared = SoundEffects()
 
-    private var players: [AVAudioPlayer] = []
     private var toneDataCache: [Tone: Data] = [:]
+    private var playerPool: [Tone: [AVAudioPlayer]] = [:]
+    private var playerCursor: [Tone: Int] = [:]
+    private var didConfigureAudioSession = false
 
     private init() {}
 
     func prepare(enabled: Bool) {
         guard enabled else { return }
 
-        for event in Haptics.Event.allCases {
+        configureAudioSessionIfNeeded()
+        for event in warmupEvents {
             for tone in tones(for: event) {
-                _ = data(for: tone)
+                preparePlayers(for: tone)
             }
         }
     }
@@ -649,17 +725,55 @@ final class SoundEffects {
     }
 
     private func playTone(_ tone: Tone) {
-        players = players.filter(\.isPlaying)
-
         do {
-            let data = data(for: tone)
-            let player = try AVAudioPlayer(data: data)
-            player.prepareToPlay()
+            let player = try preparedPlayer(for: tone)
+            if player.isPlaying {
+                player.stop()
+            }
+            player.currentTime = 0
             player.play()
-            players.append(player)
         } catch {
             assertionFailure("Unable to play generated tone: \(error)")
         }
+    }
+
+    private func configureAudioSessionIfNeeded() {
+        guard !didConfigureAudioSession else { return }
+
+        let session = AVAudioSession.sharedInstance()
+        try? session.setCategory(.ambient, options: [.mixWithOthers])
+        try? session.setActive(true)
+        didConfigureAudioSession = true
+    }
+
+    private func preparePlayers(for tone: Tone) {
+        guard playerPool[tone] == nil else { return }
+
+        let data = data(for: tone)
+        let players = (0..<3).compactMap { _ -> AVAudioPlayer? in
+            do {
+                let player = try AVAudioPlayer(data: data)
+                player.prepareToPlay()
+                return player
+            } catch {
+                return nil
+            }
+        }
+
+        playerPool[tone] = players
+    }
+
+    private func preparedPlayer(for tone: Tone) throws -> AVAudioPlayer {
+        configureAudioSessionIfNeeded()
+        preparePlayers(for: tone)
+
+        guard let players = playerPool[tone], !players.isEmpty else {
+            return try AVAudioPlayer(data: data(for: tone))
+        }
+
+        let cursor = playerCursor[tone, default: 0]
+        playerCursor[tone] = (cursor + 1) % players.count
+        return players[cursor]
     }
 
     private func data(for tone: Tone) -> Data {
@@ -681,6 +795,10 @@ final class SoundEffects {
         let duration: Double
         let amplitude: Double
         let delay: Double
+    }
+
+    private var warmupEvents: [Haptics.Event] {
+        [.escape, .chain, .unlock, .miss]
     }
 
     private static func makeToneData(frequency: Double, duration: Double, amplitude: Double) -> Data {
