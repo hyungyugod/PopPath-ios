@@ -12,6 +12,10 @@ struct GameView: View {
 
     @State private var showExitConfirm = false
     @State private var showDailyRestartConfirm = false
+    // The paused overlay is shown ONLY by the pause button. The exit / daily-restart
+    // confirms also freeze the clock via game.pause(), but must not surface this overlay
+    // (that would stack two modals), so they are gated on this flag, not on runState.
+    @State private var showPausedOverlay = false
 
     var body: some View {
         VStack(spacing: 12) {
@@ -43,10 +47,14 @@ struct GameView: View {
         }
         .padding(.horizontal, 16)
         .overlay {
-            if game.runState == .paused {
+            if showPausedOverlay {
                 PausedOverlay(
-                    onResume: { game.resume() },
+                    onResume: {
+                        game.resume()
+                        showPausedOverlay = false
+                    },
                     onQuit: {
+                        showPausedOverlay = false
                         game.creditAndEndRun()
                         onExit()
                     }
@@ -54,7 +62,7 @@ struct GameView: View {
                 .transition(.opacity)
             }
         }
-        .animation(.easeInOut(duration: reduceMotion ? 0 : 0.2), value: game.runState == .paused)
+        .animation(.easeInOut(duration: reduceMotion ? 0 : 0.2), value: showPausedOverlay)
         .confirmationDialog(
             language.text("End run?", "그만할까요?"),
             isPresented: $showExitConfirm,
@@ -64,9 +72,7 @@ struct GameView: View {
                 game.creditAndEndRun()
                 onExit()
             }
-            Button(language.text("Keep playing", "계속하기"), role: .cancel) {
-                game.resume()
-            }
+            Button(language.text("Keep playing", "계속하기"), role: .cancel) { }
         } message: {
             Text(language.text("Your score so far will be saved.", "지금까지 점수는 저장돼요."))
         }
@@ -78,11 +84,18 @@ struct GameView: View {
             Button(language.text("Restart", "다시 시작"), role: .destructive) {
                 game.newRound(mode: .daily)
             }
-            Button(language.text("Keep playing", "계속하기"), role: .cancel) {
-                game.resume()
-            }
+            Button(language.text("Keep playing", "계속하기"), role: .cancel) { }
         } message: {
             Text(language.text("This forfeits your current run.", "지금 진행 중인 판은 사라져요."))
+        }
+        // Any dismissal of a confirm that didn't end / restart the run (cancel button OR an
+        // outside-tap that runs no button) must lift the clock-freeze, so the game can never
+        // get stuck paused with no visible overlay.
+        .onChange(of: showExitConfirm) { _, showing in
+            if !showing && game.runState == .paused { game.resume() }
+        }
+        .onChange(of: showDailyRestartConfirm) { _, showing in
+            if !showing && game.runState == .paused { game.resume() }
         }
         .onAppear {
             game.configureFeedback(soundEnabled: soundEnabled, hapticsEnabled: hapticsEnabled)
@@ -118,7 +131,7 @@ struct GameView: View {
 
             Spacer()
 
-            Button { game.pause() } label: {
+            Button { game.pause(); showPausedOverlay = true } label: {
                 Image(systemName: "pause.fill")
                     .font(.system(size: 15, weight: .bold, design: .rounded))
                     .foregroundStyle(Color.ppInkGray.opacity(0.82))
