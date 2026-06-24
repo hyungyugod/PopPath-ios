@@ -18,6 +18,8 @@ struct GameView: View {
     // confirms also freeze the clock via game.pause(), but must not surface this overlay
     // (that would stack two modals), so they are gated on this flag, not on runState.
     @State private var showPausedOverlay = false
+    /// Drives the red screen-edge penalty flash on a wrong flick; pulsed by `missFlashToken`.
+    @State private var missFlash: Double = 0
 
     var body: some View {
         VStack(spacing: 12) {
@@ -25,12 +27,16 @@ struct GameView: View {
 
             HUDView(game: game, reduceMotion: reduceMotion)
 
+            // The reward/chain banner lives in its own lane *above* the board so it never covers
+            // the blocks (a "MEGA CHAIN ×20" toast used to sit over the top rows). Fixed-height so
+            // it never reflows the board mid-pop.
+            boardToastLane
+
             BoardView(
                 board: game.board,
                 openPositions: game.openPositions,
                 escapingBlocks: game.escapingBlocks,
                 floatingScores: game.floatingScores,
-                boardToast: game.boardToast,
                 boardGeneration: game.boardGeneration,
                 boardModifier: game.currentModifier,
                 colorAssist: colorAssist,
@@ -68,6 +74,11 @@ struct GameView: View {
                 )
                 .transition(.opacity)
             }
+        }
+        // Wrong-flick penalty: a red glow hugging the whole screen edge, fading out. A single
+        // non-repeating pulse (no strobe) so it stays photosensitivity-safe (G8).
+        .overlay {
+            MissEdgeFlash(opacity: missFlash)
         }
         .animation(.easeInOut(duration: reduceMotion ? 0 : 0.2), value: showPausedOverlay)
         .confirmationDialog(
@@ -138,6 +149,27 @@ struct GameView: View {
             guard UIAccessibility.isVoiceOverRunning, game.currentModifier != .none else { return }
             UIAccessibility.post(notification: .announcement, argument: game.currentModifier.announcement(language: language))
         }
+        // A wrong flick bumps `missFlashToken`; snap the red edge glow on, then fade it out.
+        .onChange(of: game.missFlashToken) { _, _ in
+            missFlash = 0.95
+            withAnimation(.easeOut(duration: reduceMotion ? 0.28 : 0.45)) {
+                missFlash = 0
+            }
+        }
+    }
+
+    /// Fixed-height banner lane above the board. Holds the centered reward/chain toast so it can
+    /// never overlap the blocks, and animates the toast in/out without reflowing the board.
+    private var boardToastLane: some View {
+        ZStack {
+            if let toast = game.boardToast {
+                BoardToastView(toast: toast)
+                    .transition(.scale(scale: 0.92).combined(with: .opacity))
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .frame(height: 34)
+        .animation(.spring(response: 0.24, dampingFraction: 0.75), value: game.boardToast?.id)
     }
 
     private func requestExit() {
@@ -592,7 +624,6 @@ private struct BoardView: View {
     let openPositions: Set<BoardPosition>
     let escapingBlocks: [EscapingBlock]
     let floatingScores: [FloatingScore]
-    let boardToast: BoardToast?
     let boardGeneration: Int
     let boardModifier: BoardModifier
     let colorAssist: Bool
@@ -682,7 +713,7 @@ private struct BoardView: View {
                 .coordinateSpace(name: Self.boardCoordinateSpace)
                 .contentShape(Rectangle())
                 .gesture(boardGesture(cellSize: cellSize))
-                .animation(reduceMotion ? nil : .easeInOut(duration: 0.16), value: boardGeneration)
+                .animation(reduceMotion ? nil : .easeInOut(duration: 0.24), value: boardGeneration)
                 .padding(boardPadding)
                 .frame(width: width)
                 .background(
@@ -709,14 +740,6 @@ private struct BoardView: View {
                     }
                 }
                 .animation(reduceMotion ? nil : .spring(response: 0.3, dampingFraction: 0.8), value: boardModifier)
-                .overlay(alignment: .top) {
-                    if let boardToast {
-                        BoardToastView(toast: boardToast)
-                            .padding(.top, 13)
-                            .transition(.scale(scale: 0.92).combined(with: .opacity))
-                    }
-                }
-                .animation(.spring(response: 0.24, dampingFraction: 0.75), value: boardToast?.id)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
@@ -893,8 +916,10 @@ private struct EscapingBlockView: View {
     private func releaseOffset(progress: CGFloat, burstLevel: CGFloat) -> CGSize {
         guard !reduceMotion else { return .zero }
 
-        let slideProgress = ppEaseOutCubic(ppUnit(progress / 0.7))
-        let distance = cellSize * (0.34 + burstLevel * 0.18)
+        // Glide across more of the pop's life (0.85 vs 0.7) and travel further (≈0.55–0.8 of a
+        // cell), so the block reads as smoothly sliding out rather than a quick hop.
+        let slideProgress = ppEaseOutCubic(ppUnit(progress / 0.85))
+        let distance = cellSize * (0.55 + burstLevel * 0.22)
         return escapingBlock.block.direction.vector.scaled(by: distance * slideProgress)
     }
 }
@@ -1051,9 +1076,9 @@ private struct BoardCell: View {
             }
         }
         .frame(width: side, height: side)
-        .animation(reduceMotion ? nil : .easeOut(duration: 0.2), value: block == nil)
+        .animation(reduceMotion ? nil : .easeOut(duration: 0.22), value: block == nil)
         .scaleEffect(pressScale)
-        .animation(reduceMotion ? nil : .spring(response: 0.2, dampingFraction: 0.62), value: isPressed)
+        .animation(reduceMotion ? nil : .spring(response: 0.28, dampingFraction: 0.72), value: isPressed)
         .modifier(BoardCellAccessibility(
             label: block.map { accessibilityLabel(for: $0) },
             isButton: block != nil && isOpen,
@@ -1201,6 +1226,23 @@ private struct BoardToastView: View {
         case .unlock: Color.ppMintText.opacity(0.25)
         case .freshPath, .clear: Color.ppMintText.opacity(0.22)
         }
+    }
+}
+
+/// The wrong-flick penalty cue: a soft red glow hugging the whole screen edge. Driven by a
+/// fading opacity so it reads as a single punishing pulse, not a strobe. Non-interactive.
+private struct MissEdgeFlash: View {
+    let opacity: Double
+
+    var body: some View {
+        RoundedRectangle(cornerRadius: 44, style: .continuous)
+            .stroke(Color.ppPenaltyRed, lineWidth: 22)
+            .blur(radius: 11)
+            .padding(-8)
+            .ignoresSafeArea()
+            .opacity(opacity)
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
     }
 }
 

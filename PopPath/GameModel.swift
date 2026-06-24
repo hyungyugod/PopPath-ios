@@ -455,6 +455,10 @@ final class GameModel: ObservableObject {
     /// hinted run into the records. Reset to false only on `newRound`.
     @Published private(set) var isPractice = false
     @Published private(set) var escapingBlocks: [EscapingBlock] = []
+    /// Bumped each time a wrong flick should flash the screen-edge penalty cue. The view
+    /// observes the *change*, not the value; it is incremented alongside the (throttled) miss
+    /// haptic so rapid fumbles never strobe the screen (photosensitivity guard, G8).
+    @Published private(set) var missFlashToken = 0
     /// Short-lived per-pop "+N" markers (E4). The view animates each rising/fading at its
     /// cell; the model just owns the data and retires each after a fixed lifetime.
     @Published private(set) var floatingScores: [FloatingScore] = []
@@ -502,6 +506,9 @@ final class GameModel: ObservableObject {
     private let now: () -> Date
     /// Seconds a miss shaves off the round deadline (E2).
     private let missTimePenalty: TimeInterval = 2
+    /// Points a wrong flick deducts (clamped at 0), so a mistake stings a little beyond the
+    /// chain break and clock hit — half a base pop, kept small ("조금 깎아줘").
+    private let missScorePenalty = 5
     /// Consolation points per block stranded when the board gets stuck (D6).
     private let strandedBlockReward = 3
 
@@ -1017,9 +1024,14 @@ final class GameModel: ObservableObject {
         block.isMiss = true
         updateCell(row: row, column: column, with: block)
         applyMissTimePenalty()
-        // Coalesce rapid misses so a fumble doesn't machine-gun haptics/sound (J7).
+        // A wrong flick also shaves a little score (clamped at 0). Applied every miss so it stays
+        // deterministic; only the *sensory* feedback below is coalesced.
+        score = max(0, score - missScorePenalty)
+        // Coalesce rapid misses so a fumble doesn't machine-gun haptics/sound — and so the
+        // screen-edge flash never strobes (J7/G8).
         if shouldEmitMissFeedback() {
             queueFeedback(.miss, hapticsEnabled: hapticsEnabled, soundEnabled: soundEnabled)
+            missFlashToken &+= 1
         }
 
         let blockID = block.id

@@ -183,7 +183,8 @@ final class GameRulesTests: XCTestCase {
 
         model.swipe(row: 2, column: 1, hapticsEnabled: false)
         XCTAssertEqual(model.chain, 0)
-        XCTAssertEqual(model.score, 10)
+        // The miss breaks the chain and shaves the small score penalty (10 − 5).
+        XCTAssertEqual(model.score, 5)
     }
 
     @MainActor
@@ -666,6 +667,41 @@ final class GameRulesTests: XCTestCase {
         model.swipe(row: 2, column: 1, hapticsEnabled: false)
 
         XCTAssertEqual(model.time, 58, "A miss shaves a small fixed amount off the clock")
+    }
+
+    @MainActor
+    func testMissScorePenaltyClampsAtZero() {
+        let model = GameModel(makeInitialBoard: false)
+        var board = GameRules.emptyBoard()
+        // (2,1) points right into the blocked (2,4): an immediate miss while the score is still 0.
+        board[2][1] = PopBlock(direction: .right, tone: .mistBlue)
+        board[2][4] = PopBlock(direction: .left, tone: .lavenderMist)
+        model.loadBoardForTesting(board)
+
+        model.swipe(row: 2, column: 1, hapticsEnabled: false)
+        XCTAssertEqual(model.score, 0, "The miss penalty never drives the score negative")
+    }
+
+    func testGradeLadderForScore() {
+        XCTAssertEqual(Grade.forScore(0).tier, 0)          // Rookie
+        XCTAssertEqual(Grade.forScore(9_999).tier, 0)      // still Rookie just under the gate
+        XCTAssertEqual(Grade.forScore(10_000).tier, 1)     // Bronze
+        XCTAssertEqual(Grade.forScore(14_999).tier, 1)
+        XCTAssertEqual(Grade.forScore(15_000).tier, 2)     // Silver
+        XCTAssertEqual(Grade.forScore(54_999).tier, 9)     // Master, one below the top gate
+        XCTAssertEqual(Grade.forScore(55_000).tier, 10)    // Grandmaster
+        XCTAssertEqual(Grade.forScore(1_000_000).tier, 10) // never exceeds the top tier
+
+        // Ten ranked tiers, 5,000 apart starting at 10,000.
+        XCTAssertEqual(Grade.ranked.count, 10)
+        XCTAssertEqual(
+            Grade.ranked.map(\.threshold),
+            Array(stride(from: 10_000, through: 55_000, by: 5_000))
+        )
+
+        // Progress-to-next reads off the live score; the top tier reports none.
+        XCTAssertEqual(Grade.forScore(12_000).pointsToNext(from: 12_000), 3_000) // → Silver at 15k
+        XCTAssertNil(Grade.forScore(60_000).pointsToNext(from: 60_000))
     }
 
     @MainActor

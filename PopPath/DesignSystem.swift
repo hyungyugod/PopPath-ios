@@ -78,6 +78,83 @@ extension Color {
     static let ppArmorCrack = Color(hex: 0xE3E8EA)   // armored, cracked — paler "drained" steel
     static let ppWildButter = Color(hex: 0xF1E6B8)   // wild — soft butter-gold (well off mint)
     static let ppSpecialRing = Color(hex: 0x6E5A4E)  // cocoa-taupe ink for special frames/badges
+
+    // A clear, saturated red reserved for the wrong-flick penalty cue (screen-edge flash). It is
+    // deliberately a truer red than the softer `ppSoftCoral` miss stroke so a mistake reads as a
+    // real penalty, not the gentle pastel coral used elsewhere.
+    static let ppPenaltyRed = Color(hex: 0xE5484D)
+}
+
+extension Grade {
+    /// Medal/gem color for the tier's badge. Each is dark enough to clear WCAG AA (≥4.5:1) with
+    /// the badge's white label (Gold is the exception — it stays bright and uses dark ink), so a
+    /// rank chip honors the same contrast gate the rest of the app does (G5). Solid, never
+    /// translucent, so the cream surface can't bleed through and lighten it.
+    var badgeColor: Color {
+        switch tier {
+        case 1:  return Color(hex: 0x875530) // Bronze
+        case 2:  return Color(hex: 0x59636E) // Silver
+        case 3:  return Color(hex: 0xD9A520) // Gold (paired with dark ink)
+        case 4:  return Color(hex: 0x3E7186) // Platinum (cool steel-blue)
+        case 5:  return Color(hex: 0x1F7C55) // Emerald
+        case 6:  return Color(hex: 0x315CA8) // Sapphire
+        case 7:  return Color(hex: 0xC23B37) // Ruby
+        case 8:  return Color(hex: 0x227E8C) // Diamond (deep teal-cyan)
+        case 9:  return Color(hex: 0x7857C2) // Master (amethyst)
+        case 10: return Color(hex: 0xB0368A) // Grandmaster (magenta)
+        default: return Color(hex: 0x515A52) // Rookie (muted sage-gray)
+        }
+    }
+
+    /// Foreground for the badge: white on the deeper tiers, dark ink on the bright Gold so the
+    /// label keeps a legible contrast on every medal.
+    var badgeTextColor: Color {
+        tier == 3 ? Color(hex: 0x3A2A08) : .white
+    }
+
+    /// SF Symbol glyph: a leaf for Rookie, shields for the metals, gems for the mid tiers, and
+    /// a crown for the very top — so each band reads at a glance even without the label.
+    var badgeSymbol: String {
+        switch tier {
+        case 0: return "leaf.fill"
+        case 1...4: return "shield.fill"
+        case 5...8: return "diamond.fill"
+        case 9: return "rosette"
+        default: return "crown.fill"
+        }
+    }
+}
+
+/// A rank chip rendering a `Grade` as a colored medal. Shared by the result screen (full size)
+/// and the home screen (compact), so a tier always looks the same wherever it appears.
+struct GradeBadge: View {
+    @Environment(\.appLanguage) private var language
+    let grade: Grade
+    var compact: Bool = false
+
+    var body: some View {
+        HStack(spacing: compact ? 5 : 7) {
+            Image(systemName: grade.badgeSymbol)
+                .font(.system(size: compact ? 11 : 15, weight: .black, design: .rounded))
+            Text(grade.name(language: language))
+                .font(.ppBody(compact ? 12 : 15, weight: .heavy, language: language))
+                .tracking(language == .korean ? 0 : 0.4)
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+        }
+        .foregroundStyle(grade.badgeTextColor)
+        .padding(.horizontal, compact ? 11 : 16)
+        .padding(.vertical, compact ? 5 : 9)
+        .background(
+            // Solid (opaque) fill so the cream surface never shows through and lightens the
+            // medal below its AA-cleared contrast; depth comes from the drop shadow alone.
+            Capsule(style: .continuous)
+                .fill(grade.badgeColor)
+                .shadow(color: grade.badgeColor.opacity(0.32), radius: compact ? 4 : 8, x: 0, y: compact ? 2 : 4)
+        )
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(language.text("Grade: \(grade.nameEN)", "등급: \(grade.nameKO)"))
+    }
 }
 
 extension Font {

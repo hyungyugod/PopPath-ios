@@ -74,6 +74,9 @@ struct HomeView: View {
                         .padding(.bottom, isShort ? 14 : 18)
                 } else {
                     PillStat(label: language.text("BEST", "최고"), value: best.formatted())
+                        .padding(.bottom, 8)
+
+                    GradeBadge(grade: Grade.forScore(best), compact: true)
                         .padding(.bottom, isShort ? 10 : 12)
 
                     HStack(spacing: 8) {
@@ -439,6 +442,17 @@ struct ResultView: View {
                 .foregroundStyle(Color.ppWarmGray)
                 .padding(.top, 2)
 
+            // Score-based rank medal for this run, with a nudge toward the next tier.
+            GradeBadge(grade: grade)
+                .padding(.top, 16)
+
+            Text(gradeProgressText)
+                .font(.ppBody(12, weight: .semibold, language: language))
+                .foregroundStyle(Color.ppWarmGray)
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+                .padding(.top, 6)
+
             if summary.isNewBest || summary.isNewDailyBest {
                 Label(
                     summary.isNewDailyBest
@@ -544,6 +558,20 @@ struct ResultView: View {
                 .shadow(color: Color.ppInkGray.opacity(0.08), radius: 14, x: 0, y: -5)
                 .ignoresSafeArea(edges: .bottom)
         }
+    }
+
+    /// This run's rank, derived purely from its score.
+    private var grade: Grade { Grade.forScore(summary.score) }
+
+    /// Either how far to the next tier, or a top-grade flourish at Grandmaster.
+    private var gradeProgressText: String {
+        guard let toNext = grade.pointsToNext(from: summary.score), let next = grade.next else {
+            return language.text("Top grade reached!", "최고 등급 달성!")
+        }
+        return language.text(
+            "\(toNext.formatted()) to \(next.nameEN)",
+            "\(next.nameKO)까지 \(toNext.formatted())점"
+        )
     }
 
     /// The small mode line above the headline. A practice run is neutral — it didn't "complete"

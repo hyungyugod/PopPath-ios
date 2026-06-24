@@ -222,7 +222,9 @@ struct EscapingBlock: Identifiable, Equatable {
         column: Int,
         chain: Int = 1,
         startedAt: Date = .now,
-        duration: TimeInterval = 0.18
+        // A touch longer than the old 0.18 so a popped block glides out smoothly ("슥슥") instead
+        // of snapping away; paired with a longer slide distance + gentler easing in the view.
+        duration: TimeInterval = 0.26
     ) {
         self.id = id
         self.block = block
@@ -231,6 +233,61 @@ struct EscapingBlock: Identifiable, Equatable {
         self.chain = chain
         self.startedAt = startedAt
         self.duration = duration
+    }
+}
+
+/// Score-based rank ladder: ten tiers starting at 10,000 points and rising in 5,000-point
+/// steps (Bronze → Grandmaster), plus an unranked "Rookie" state below the first threshold.
+/// Pure data — the tier's display color and badge glyph live in DesignSystem so this type
+/// stays SwiftUI-free, mirroring how `BlockTone` keeps its color out of GameCore.
+struct Grade: Equatable, Identifiable {
+    /// 0 = unranked (below the first threshold); 1...10 = the ranked tiers, lowest first.
+    let tier: Int
+    let nameEN: String
+    let nameKO: String
+    /// The score at which this tier is reached. 0 for the unranked Rookie tier.
+    let threshold: Int
+
+    var id: Int { tier }
+
+    func name(language: AppLanguage) -> String {
+        language == .korean ? nameKO : nameEN
+    }
+
+    /// Shown before the player has crossed the first 10,000-point threshold.
+    static let rookie = Grade(tier: 0, nameEN: "Rookie", nameKO: "새내기", threshold: 0)
+
+    /// The ten ranked tiers, lowest first. Thresholds: 10k, 15k, … 55k.
+    static let ranked: [Grade] = [
+        Grade(tier: 1,  nameEN: "Bronze",      nameKO: "브론즈",       threshold: 10_000),
+        Grade(tier: 2,  nameEN: "Silver",      nameKO: "실버",         threshold: 15_000),
+        Grade(tier: 3,  nameEN: "Gold",        nameKO: "골드",         threshold: 20_000),
+        Grade(tier: 4,  nameEN: "Platinum",    nameKO: "플래티넘",     threshold: 25_000),
+        Grade(tier: 5,  nameEN: "Emerald",     nameKO: "에메랄드",     threshold: 30_000),
+        Grade(tier: 6,  nameEN: "Sapphire",    nameKO: "사파이어",     threshold: 35_000),
+        Grade(tier: 7,  nameEN: "Ruby",        nameKO: "루비",         threshold: 40_000),
+        Grade(tier: 8,  nameEN: "Diamond",     nameKO: "다이아몬드",   threshold: 45_000),
+        Grade(tier: 9,  nameEN: "Master",      nameKO: "마스터",       threshold: 50_000),
+        Grade(tier: 10, nameEN: "Grandmaster", nameKO: "그랜드마스터", threshold: 55_000),
+    ]
+
+    /// All tiers including unranked Rookie, lowest first.
+    static let allTiers: [Grade] = [rookie] + ranked
+
+    /// The highest tier whose threshold `score` meets. Below 10,000 → Rookie.
+    static func forScore(_ score: Int) -> Grade {
+        ranked.last(where: { score >= $0.threshold }) ?? rookie
+    }
+
+    /// The next tier up, or nil once at the top (Grandmaster / Rookie has Bronze as next).
+    var next: Grade? {
+        Grade.ranked.first(where: { $0.tier == tier + 1 })
+    }
+
+    /// Points still needed to reach the next tier from `score`; nil at the top tier.
+    func pointsToNext(from score: Int) -> Int? {
+        guard let next else { return nil }
+        return max(0, next.threshold - score)
     }
 }
 
