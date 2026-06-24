@@ -244,6 +244,8 @@ struct RoundSummary: Identifiable, Equatable {
     let isNewBest: Bool
     let isNewDailyBest: Bool
     let unlockedAchievements: [Achievement]
+    /// This run was played in Practice Mode (Open-Path Highlight on) and credited nothing.
+    let isPractice: Bool
     let lifetimeStats: PlayerStats
 
     init(
@@ -257,6 +259,7 @@ struct RoundSummary: Identifiable, Equatable {
         isNewBest: Bool = false,
         isNewDailyBest: Bool = false,
         unlockedAchievements: [Achievement] = [],
+        isPractice: Bool = false,
         lifetimeStats: PlayerStats = PlayerStats()
     ) {
         self.score = score
@@ -269,6 +272,7 @@ struct RoundSummary: Identifiable, Equatable {
         self.isNewBest = isNewBest
         self.isNewDailyBest = isNewDailyBest
         self.unlockedAchievements = unlockedAchievements
+        self.isPractice = isPractice
         self.lifetimeStats = lifetimeStats
     }
 
@@ -430,6 +434,9 @@ final class GameModel: ObservableObject {
     @Published private(set) var best: Int
     @Published private(set) var dailyBest: Int
     @Published private(set) var mode: GameMode = .classic
+    /// The variety modifier on the current board (rolled per deal; deterministic for the Daily).
+    /// Drives the score/decay tweaks below and the board's banner/tint in the view.
+    @Published private(set) var currentModifier: BoardModifier = .none
     @Published private(set) var dailyChallenge: DailyChallenge
     /// The toast currently on screen — the head of the ordered event queue. Kept as the
     /// published mirror that `GameView` renders and tests inspect.
@@ -441,6 +448,12 @@ final class GameModel: ObservableObject {
     /// the board container.
     @Published private(set) var boardGeneration = 0
     @Published private(set) var stats: PlayerStats
+    /// True once the Open-Path Highlight (Practice Mode) was on at any point during this run.
+    /// A practice run is a pure sandbox: it credits nothing (no best, stats, daily best, streak,
+    /// achievements, or live celebrations) and a practice Daily never consumes the day's attempt.
+    /// It latches one-way so flipping the assist on mid-run can't be flipped back off to sneak a
+    /// hinted run into the records. Reset to false only on `newRound`.
+    @Published private(set) var isPractice = false
     @Published private(set) var escapingBlocks: [EscapingBlock] = []
     /// Short-lived per-pop "+N" markers (E4). The view animates each rising/fading at its
     /// cell; the model just owns the data and retires each after a fixed lifetime.
@@ -507,6 +520,9 @@ final class GameModel: ObservableObject {
     /// Unlock bonus per newly opened path, scaled by chain — retuned up relative to the now
     /// capped per-pop term so opening paths is a headline reward (E1/E6).
     private let unlockBaseBonus = 14
+    /// Flat points per block cleared by a bomb's detonation (its row + column). Not chain-scaled
+    /// so a big blast doesn't dwarf everything else.
+    private let bombDetonationReward = 12
     /// Lifetime of a per-pop floating "+N" marker before it is retired.
     private let floatingScoreLifetime: TimeInterval = 0.7
 
@@ -578,6 +594,8 @@ final class GameModel: ObservableObject {
         score = 0
         chain = 0
         maxChain = 0
+        isPractice = false
+        currentModifier = .none
         roundMetrics = .zero
         escapingBlocks = []
         floatingScores = []
@@ -622,7 +640,9 @@ final class GameModel: ObservableObject {
         boardToast = nil
         pendingEvents = []
 
-        let profile = BoardGenerationProfile.difficulty(level: currentDifficultyLevel)
+        let level = currentDifficultyLevel
+        let profile = BoardGenerationProfile.difficulty(level: level)
+        currentModifier = rolledModifier(forDealIndex: boardDealIndex, level: level)
         board = makeClassicBoard(profile: profile)
         boardGeneration += 1
     }
@@ -698,6 +718,12 @@ final class GameModel: ObservableObject {
         pendingEvents = []
         escapingBlocks = []
         floatingScores = []
+
+        // Practice Mode credits nothing on a confirmed exit either (mirrors finishRound).
+        guard !isPractice else {
+            roundSummary = nil
+            return
+        }
 
         let completedMetrics = roundMetrics
         if mode == .classic, score > best {
@@ -778,6 +804,21 @@ final class GameModel: ObservableObject {
         SoundEffects.shared.prepare(enabled: soundEnabled)
     }
 
+    /// Latches the run into Practice Mode if the Open-Path Highlight is (or ever was) on during
+    /// it. Called at round start and whenever the toggle changes, so a run that sees the hints
+    /// — even briefly via the paused overlay — can never be credited. One-way: passing `false`
+    /// after it's latched does nothing.
+    func setPracticeAssist(_ assistOn: Bool) {
+        guard assistOn else { return }
+        let wasPractice = isPractice
+        isPractice = true
+        if !wasPractice {
+            // Latching mid-run: drop any celebration queued on what is now an uncredited run, so
+            // it can't over-promise a "NEW BEST"/achievement the run will never save.
+            pendingEvents.removeAll { $0.kind == .celebration }
+        }
+    }
+
     /// Direction-true pop: a flick clears a block only when it matches the block's arrow
     /// AND the block has a clear runway to the edge. A matching flick into a blocked block,
     /// or any wrong-direction flick, registers a miss. The board gesture only forwards a
@@ -797,75 +838,201 @@ final class GameModel: ObservableObject {
             return
         }
 
-        if direction == block.direction,
-           GameRules.isEscapable(on: board, row: row, column: column) {
-            let openBeforeRemoval = openPositions
-            let blockID = block.id
-            let nextChain = chain + 1
-            let escapingBlock = EscapingBlock(
-                id: blockID,
-                block: block,
-                row: row,
-                column: column,
-                chain: nextChain
-            )
-            addEscapingBlock(escapingBlock)
-            updateCell(row: row, column: column, with: nil)
-
-            roundMetrics.pops += 1
-            chain = nextChain
-            let popScore = perPopScore(forChain: chain)
-            score += popScore
-            emitFloatingScore(amount: popScore, row: row, column: column, chain: chain)
-            maxChain = max(maxChain, chain)
-            let feedbackEvent = Self.feedbackEvent(forChain: chain)
-            showChainToastIfNeeded()
-            scheduleChainReset()
-            // Collapse this pop's haptics (pop tier + any unlock + any clear/fresh-path) into
-            // one strongest impact so the bonus haptics don't bury the pop confirmation; sound
-            // for each still plays (layered, async).
-            suppressRewardHaptics = true
-            strongestSuppressedHaptic = nil
-            awardUnlockBonusIfNeeded(openBeforeRemoval: openBeforeRemoval)
-            resolveBoardAfterRemoval()
-            queueFeedback(feedbackEvent, hapticsEnabled: hapticsEnabled, soundEnabled: soundEnabled)
-            suppressRewardHaptics = false
-            if let popHaptic = strongestSuppressedHaptic {
-                Haptics.play(popHaptic, enabled: hapticsEnabled)
-            }
-            surfaceLiveMilestones()
-            // All rewards from this pop are now enqueued; surface the highest-priority one.
-            drainEventQueue()
-
-            Task { [weak self] in
-                let lifetime = UInt64((escapingBlock.duration + 0.025) * 1_000_000_000)
-                try? await Task.sleep(nanoseconds: lifetime)
-                self?.removeEscapingBlock(id: blockID)
-            }
+        // What counts as a valid flick depends on the block's kind: a wild block pops with any
+        // direction that has a clear lane; every other kind must be flicked along its own arrow.
+        let validFlick: Bool
+        let popDirection: Direction
+        if block.kind == .wild {
+            validFlick = GameRules.hasClearRunway(on: board, row: row, column: column, direction: direction)
+            popDirection = direction
         } else {
-            chainResetTask?.cancel()
-            chain = 0
-            // A miss ends the chain, so retire the decay indicator with it (keeps the
-            // invariant chain>0 ⇔ chainDecayDeadline != nil).
-            chainDecayDeadline = nil
-            pausedChainDecayRemaining = nil
-            chainDecayDuration = 0
-            roundMetrics.misses += 1
+            validFlick = direction == block.direction
+                && GameRules.isEscapable(on: board, row: row, column: column)
+            popDirection = block.direction
+        }
 
-            block.isMiss = true
-            updateCell(row: row, column: column, with: block)
-            applyMissTimePenalty()
-            // Coalesce rapid misses so a fumble doesn't machine-gun haptics/sound (J7).
-            if shouldEmitMissFeedback() {
-                queueFeedback(.miss, hapticsEnabled: hapticsEnabled, soundEnabled: soundEnabled)
-            }
+        guard validFlick else {
+            registerMiss(row: row, column: column, block: &block, hapticsEnabled: hapticsEnabled, soundEnabled: soundEnabled)
+            return
+        }
 
-            let blockID = block.id
+        // Armored: the first valid flick only cracks it; it pops on the next one.
+        if block.kind == .armored, block.armor > 0 {
+            crackArmoredBlock(row: row, column: column, block: &block, hapticsEnabled: hapticsEnabled, soundEnabled: soundEnabled)
+            return
+        }
+
+        performPop(
+            row: row,
+            column: column,
+            block: block,
+            popDirection: popDirection,
+            hapticsEnabled: hapticsEnabled,
+            soundEnabled: soundEnabled
+        )
+    }
+
+    private func performPop(
+        row: Int,
+        column: Int,
+        block: PopBlock,
+        popDirection: Direction,
+        hapticsEnabled: Bool,
+        soundEnabled: Bool
+    ) {
+        let openBeforeRemoval = openPositions
+        let blockID = block.id
+        let nextChain = chain + 1
+        // The escaping visual is a plain pop sliding the flicked way (wild follows your flick);
+        // a bomb's spectacle is its detonation, handled below.
+        var poppedBlock = block
+        poppedBlock.direction = popDirection
+        poppedBlock.kind = .normal
+        let escapingBlock = EscapingBlock(
+            id: blockID,
+            block: poppedBlock,
+            row: row,
+            column: column,
+            chain: nextChain
+        )
+        addEscapingBlock(escapingBlock)
+        updateCell(row: row, column: column, with: nil)
+
+        roundMetrics.pops += 1
+        chain = nextChain
+        let popScore = scaledByModifier(perPopScore(forChain: chain))
+        score += popScore
+        emitFloatingScore(amount: popScore, row: row, column: column, chain: chain)
+        maxChain = max(maxChain, chain)
+        let feedbackEvent = Self.feedbackEvent(forChain: chain)
+        showChainToastIfNeeded()
+        scheduleChainReset()
+        // Collapse this pop's haptics (pop tier + any unlock + any clear/fresh-path/bomb) into
+        // one strongest impact so the bonus haptics don't bury the pop confirmation; sound
+        // for each still plays (layered, async).
+        suppressRewardHaptics = true
+        strongestSuppressedHaptic = nil
+        if block.kind == .bomb {
+            // The blast clears a cross of cells and already pays detonation points, so we do NOT
+            // also pay a player "unlock" bonus for lanes the explosion (not a skillful flick)
+            // freed — that would double-count and inflate unlock stats. Skipping it also means
+            // no UNLOCK toast is enqueued, so the bomb's own "BOOM" toast actually surfaces.
+            detonateBomb(row: row, column: column, hapticsEnabled: hapticsEnabled, soundEnabled: soundEnabled)
+        } else {
+            awardUnlockBonusIfNeeded(openBeforeRemoval: openBeforeRemoval)
+        }
+        resolveBoardAfterRemoval()
+        queueFeedback(feedbackEvent, hapticsEnabled: hapticsEnabled, soundEnabled: soundEnabled)
+        suppressRewardHaptics = false
+        if let popHaptic = strongestSuppressedHaptic {
+            Haptics.play(popHaptic, enabled: hapticsEnabled)
+        }
+        surfaceLiveMilestones()
+        // All rewards from this pop are now enqueued; surface the highest-priority one.
+        drainEventQueue()
+
+        Task { [weak self] in
+            let lifetime = UInt64((escapingBlock.duration + 0.025) * 1_000_000_000)
+            try? await Task.sleep(nanoseconds: lifetime)
+            self?.removeEscapingBlock(id: blockID)
+        }
+    }
+
+    /// A bomb pops like a normal block, then clears every other block in its row and column,
+    /// each as a little pop. Detonated blocks pay flat points and count as pops, but don't each
+    /// advance the chain (the bomb's own pop already did). Detonated bombs do NOT chain-react —
+    /// they clear as ordinary blocks, keeping the blast bounded.
+    private func detonateBomb(row: Int, column: Int, hapticsEnabled: Bool, soundEnabled: Bool) {
+        var targets: [BoardPosition] = []
+        for otherColumn in 0..<GameRules.columns where otherColumn != column {
+            if board[row][otherColumn] != nil { targets.append(BoardPosition(row: row, column: otherColumn)) }
+        }
+        for otherRow in 0..<GameRules.rows where otherRow != row {
+            if board[otherRow][column] != nil { targets.append(BoardPosition(row: otherRow, column: column)) }
+        }
+        guard !targets.isEmpty else { return }
+
+        var nextBoard = board
+        for position in targets {
+            guard let hit = nextBoard[position.row][position.column] else { continue }
+            var poppedBlock = hit
+            poppedBlock.kind = .normal
+            let escaping = EscapingBlock(
+                id: hit.id,
+                block: poppedBlock,
+                row: position.row,
+                column: position.column,
+                chain: max(chain, 1)
+            )
+            addEscapingBlock(escaping)
+            nextBoard[position.row][position.column] = nil
+            let escapingID = hit.id
             Task { [weak self] in
-                try? await Task.sleep(nanoseconds: 180_000_000)
-                self?.clearMiss(id: blockID, row: row, column: column)
+                let lifetime = UInt64((escaping.duration + 0.025) * 1_000_000_000)
+                try? await Task.sleep(nanoseconds: lifetime)
+                self?.removeEscapingBlock(id: escapingID)
             }
         }
+        board = nextBoard
+
+        let detonated = targets.count
+        roundMetrics.pops += detonated
+        let bonus = scaledByModifier(detonated * bombDetonationReward)
+        score += bonus
+        queueFeedback(.boardClear, hapticsEnabled: hapticsEnabled, soundEnabled: soundEnabled)
+        enqueueEvent(
+            BoardEvent(
+                kind: .unlock,
+                title: "BOOM",
+                detail: "+\(bonus)",
+                style: .chain,
+                announce: "Boom. Plus \(bonus).",
+                duration: 760_000_000
+            )
+        )
+    }
+
+    /// The first valid flick on an armored block only cracks it — no pop, no chain advance, and
+    /// crucially no miss. It re-arms the decay window so engaging an armored block sustains a run.
+    private func crackArmoredBlock(row: Int, column: Int, block: inout PopBlock, hapticsEnabled: Bool, soundEnabled: Bool) {
+        block.armor -= 1
+        updateCell(row: row, column: column, with: block)
+        if chain > 0 {
+            scheduleChainReset()
+        }
+        // A firm, distinct tap so a crack reads as progress, not a miss.
+        queueFeedback(.unlock, hapticsEnabled: hapticsEnabled, soundEnabled: soundEnabled)
+    }
+
+    private func registerMiss(row: Int, column: Int, block: inout PopBlock, hapticsEnabled: Bool, soundEnabled: Bool) {
+        chainResetTask?.cancel()
+        chain = 0
+        // A miss ends the chain, so retire the decay indicator with it (keeps the
+        // invariant chain>0 ⇔ chainDecayDeadline != nil).
+        chainDecayDeadline = nil
+        pausedChainDecayRemaining = nil
+        chainDecayDuration = 0
+        roundMetrics.misses += 1
+
+        block.isMiss = true
+        updateCell(row: row, column: column, with: block)
+        applyMissTimePenalty()
+        // Coalesce rapid misses so a fumble doesn't machine-gun haptics/sound (J7).
+        if shouldEmitMissFeedback() {
+            queueFeedback(.miss, hapticsEnabled: hapticsEnabled, soundEnabled: soundEnabled)
+        }
+
+        let blockID = block.id
+        Task { [weak self] in
+            try? await Task.sleep(nanoseconds: 180_000_000)
+            self?.clearMiss(id: blockID, row: row, column: column)
+        }
+    }
+
+    /// Applies the current board modifier's score multiplier (rush doubles; others are 1×).
+    private func scaledByModifier(_ base: Int) -> Int {
+        guard currentModifier.scoreMultiplier != 1 else { return base }
+        return Int((Double(base) * currentModifier.scoreMultiplier).rounded())
     }
 
     private func applyMissTimePenalty() {
@@ -928,6 +1095,32 @@ final class GameModel: ObservableObject {
         pendingEvents = []
 
         let completedMetrics = roundMetrics
+
+        // Practice Mode: credit nothing — no best, stats, daily best, streak, or achievements,
+        // and no Daily lock — but still show the round's result so the player sees how they did.
+        if isPractice {
+            queueFeedback(
+                .finish,
+                hapticsEnabled: hapticsEnabled ?? feedbackHapticsEnabled,
+                soundEnabled: soundEnabled ?? feedbackSoundEnabled
+            )
+            roundSummary = RoundSummary(
+                score: score,
+                best: best,
+                maxChain: maxChain,
+                mode: mode,
+                dailyBest: mode == .daily ? dailyBest : nil,
+                dailyId: mode == .daily ? dailyChallenge.id : nil,
+                metrics: completedMetrics,
+                isNewBest: false,
+                isNewDailyBest: false,
+                unlockedAchievements: [],
+                isPractice: true,
+                lifetimeStats: stats
+            )
+            return
+        }
+
         let previousStats = stats
         let isNewBest = mode == .classic && score > best
         let isNewDailyBest = mode == .daily && score > dailyBest
@@ -978,6 +1171,7 @@ final class GameModel: ObservableObject {
             isNewBest: isNewBest,
             isNewDailyBest: isNewDailyBest,
             unlockedAchievements: unlockedAchievements,
+            isPractice: false,
             lifetimeStats: updatedStats
         )
     }
@@ -986,7 +1180,8 @@ final class GameModel: ObservableObject {
     func loadBoardForTesting(
         _ board: [[PopBlock?]],
         running: Bool = true,
-        mode: GameMode = .classic
+        mode: GameMode = .classic,
+        modifier: BoardModifier = .none
     ) {
         timerTask?.cancel()
         chainResetTask?.cancel()
@@ -1002,6 +1197,8 @@ final class GameModel: ObservableObject {
         self.score = 0
         self.chain = 0
         self.maxChain = 0
+        self.isPractice = false
+        self.currentModifier = modifier
         self.roundClock = RoundClock(start: now(), duration: TimeInterval(GameRules.roundSeconds))
         self.time = roundClock?.remainingSeconds(at: now()) ?? GameRules.roundSeconds
         self.runState = running ? .running : .idle
@@ -1064,7 +1261,7 @@ final class GameModel: ObservableObject {
     /// The chain-decay grace window grows with the chain (E3): a longer streak earns a little
     /// more breathing room before it lapses, and the indicator's denominator tracks it.
     private func chainDecayWindow(forChain chain: Int) -> TimeInterval {
-        1.4 + Double(min(max(chain, 1), 6)) * 0.16
+        (1.4 + Double(min(max(chain, 1), 6)) * 0.16) * currentModifier.decayFactor
     }
 
     private func scheduleChainReset() {
@@ -1147,7 +1344,10 @@ final class GameModel: ObservableObject {
 
     private func addEscapingBlock(_ escapingBlock: EscapingBlock) {
         escapingBlocks.append(escapingBlock)
-        let maximumVisibleEffects = 8
+        // Headroom for a full bomb blast (the popped bomb + up to 11 detonated cells) so the
+        // player's own flicked-block pop isn't trimmed off the front in favor of the secondary
+        // detonation pops.
+        let maximumVisibleEffects = 14
         if escapingBlocks.count > maximumVisibleEffects {
             escapingBlocks.removeFirst(escapingBlocks.count - maximumVisibleEffects)
         }
@@ -1174,6 +1374,7 @@ final class GameModel: ObservableObject {
         let level = currentDifficultyLevel
         let profile = BoardGenerationProfile.difficulty(level: level)
         roundMetrics.difficultyPeak = max(roundMetrics.difficultyPeak, level)
+        currentModifier = rolledModifier(forDealIndex: boardDealIndex, level: level)
 
         switch mode {
         case .classic:
@@ -1209,6 +1410,23 @@ final class GameModel: ObservableObject {
     private var elapsedSeconds: Int {
         guard let roundClock else { return 0 }
         return max(0, Int(roundClock.totalDuration) - roundClock.remainingSeconds(at: now()))
+    }
+
+    /// Rolls the variety modifier for a board. Level-0 boards (the opener) are always plain.
+    /// The Daily derives its roll from the challenge seed and deal index, so the same board on
+    /// the same day carries the same modifier for everyone; Classic rolls freely.
+    private func rolledModifier(forDealIndex index: Int, level: Int) -> BoardModifier {
+        guard level >= 1 else { return .none }
+        switch mode {
+        case .daily:
+            var random = SeededRandomNumberGenerator(
+                seed: dailyChallenge.seed ^ (UInt64(index &+ 1) &* 0xD1B5_4A32_D192_ED03)
+            )
+            return BoardModifier.roll(using: &random)
+        case .classic:
+            var random = SystemRandomNumberGenerator()
+            return BoardModifier.roll(using: &random)
+        }
     }
 
     private func makeClassicBoard(profile: BoardGenerationProfile) -> [[PopBlock?]] {
@@ -1262,8 +1480,13 @@ final class GameModel: ObservableObject {
 
     private func awardBoardClearBonus() {
         roundMetrics.boardClears += 1
-        let bonus = boardClearBaseBonus + min(max(chain, 1), boardClearChainCap) * boardClearChainStep
+        let base = boardClearBaseBonus + min(max(chain, 1), boardClearChainCap) * boardClearChainStep
+        let bonus = Int((Double(base) * currentModifier.clearMultiplier).rounded())
         score += bonus
+        // A Bonus board hands back time when you sweep it.
+        if currentModifier.clearTimeBonus > 0 {
+            addRoundTime(currentModifier.clearTimeBonus)
+        }
         queueFeedback(.boardClear, hapticsEnabled: feedbackHapticsEnabled, soundEnabled: feedbackSoundEnabled)
         enqueueEvent(
             BoardEvent(
@@ -1277,6 +1500,14 @@ final class GameModel: ObservableObject {
         )
     }
 
+    /// Extends the round clock (used by the Bonus board's clear reward). No-op outside a running
+    /// round.
+    private func addRoundTime(_ seconds: TimeInterval) {
+        guard runState == .running, roundClock != nil else { return }
+        roundClock?.extendRemaining(by: seconds)
+        syncTimeFromClock()
+    }
+
     private func awardUnlockBonusIfNeeded(openBeforeRemoval: Set<BoardPosition>) {
         guard running else { return }
 
@@ -1286,7 +1517,7 @@ final class GameModel: ObservableObject {
         roundMetrics.unlocks += newlyOpened
         roundMetrics.bestUnlockBurst = max(roundMetrics.bestUnlockBurst, newlyOpened)
 
-        let bonus = newlyOpened * unlockBaseBonus * max(chain, 1)
+        let bonus = scaledByModifier(newlyOpened * unlockBaseBonus * max(chain, 1))
         score += bonus
         let feedbackEvent: Haptics.Event = newlyOpened >= 3 ? .bigChain : .unlock
         queueFeedback(feedbackEvent, hapticsEnabled: feedbackHapticsEnabled, soundEnabled: feedbackSoundEnabled)
@@ -1377,6 +1608,7 @@ final class GameModel: ObservableObject {
 
         boardDealIndex = nextIndex
         roundMetrics.difficultyPeak = max(roundMetrics.difficultyPeak, level)
+        currentModifier = rolledModifier(forDealIndex: nextIndex, level: level)
         if dealMode == .classic {
             rememberClassicBoard(nextBoard)
         }
@@ -1553,6 +1785,9 @@ final class GameModel: ObservableObject {
     /// NEW BEST when the live score passes the mode's standing record, and each freshly-earned
     /// achievement once. Authoritative persistence still happens in `finishRound`.
     private func surfaceLiveMilestones() {
+        // A practice run credits nothing, so it celebrates nothing — a "NEW BEST" or achievement
+        // pop would be a lie about a run that won't be saved.
+        guard !isPractice else { return }
         // At most one celebration per pop: they all share the `.celebration` kind, which the
         // event queue coalesces, so enqueuing several at once would silently drop all but the
         // last. NEW BEST takes priority; any freshly-eligible achievement waits for a later

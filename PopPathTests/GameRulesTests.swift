@@ -365,6 +365,57 @@ final class GameRulesTests: XCTestCase {
         XCTAssertEqual(model.roundSummary?.unlockedAchievements.map(\.id), ["first_run"])
     }
 
+    @MainActor
+    func testPracticeRunCreditsNothing() {
+        // Practice Mode (Open-Path Highlight on) is a pure sandbox: it must credit nothing in any
+        // mode and a practice Daily must not consume the day's one attempt.
+        let model = GameModel(makeInitialBoard: false)
+        var board = GameRules.emptyBoard()
+        board[3][5] = PopBlock(direction: .right, tone: .mistBlue)
+        board[4][0] = PopBlock(direction: .left, tone: .lavenderMist)
+
+        model.loadBoardForTesting(board, mode: .daily)
+        model.setPracticeAssist(true)
+        XCTAssertTrue(model.isPractice)
+
+        let bestBefore = model.best
+        let dailyBestBefore = model.dailyBest
+        let roundsBefore = model.stats.roundsPlayed
+        let streakBefore = model.stats.currentStreak
+        let lastDailyBefore = model.stats.lastDailyCompletionDayID
+
+        model.swipe(row: 3, column: 5, hapticsEnabled: false)
+        model.swipe(row: 4, column: 0, hapticsEnabled: false)
+        XCTAssertGreaterThan(model.score, 0, "Practice still plays normally and shows a score")
+
+        model.finishRound(hapticsEnabled: false, soundEnabled: false)
+
+        XCTAssertEqual(model.roundSummary?.isPractice, true, "Result must be flagged as practice")
+        XCTAssertEqual(model.roundSummary?.isNewBest, false)
+        XCTAssertEqual(model.stats.roundsPlayed, roundsBefore, "Practice must not record a round")
+        XCTAssertEqual(model.best, bestBefore, "Practice must not set the best")
+        XCTAssertEqual(model.dailyBest, dailyBestBefore, "Practice must not set a daily best")
+        XCTAssertEqual(model.stats.currentStreak, streakBefore, "Practice Daily must not advance the streak")
+        XCTAssertEqual(model.stats.lastDailyCompletionDayID, lastDailyBefore, "Practice Daily must not consume the day")
+    }
+
+    @MainActor
+    func testPracticeAssistLatchesAndResetsOnNewRound() {
+        let model = GameModel(makeInitialBoard: false)
+        model.newRound()
+        XCTAssertFalse(model.isPractice)
+
+        // Latches one-way: turning it on sticks, turning it back off does not un-practice the run.
+        model.setPracticeAssist(true)
+        XCTAssertTrue(model.isPractice)
+        model.setPracticeAssist(false)
+        XCTAssertTrue(model.isPractice, "Practice must not be undoable mid-run")
+
+        // A fresh round clears it.
+        model.newRound()
+        XCTAssertFalse(model.isPractice)
+    }
+
     func testShareTextContainsRoundDetails() {
         let metrics = RoundMetrics(
             pops: 12,
@@ -861,22 +912,45 @@ final class GameRulesTests: XCTestCase {
 
     // MARK: - Sprint 6: tutorial truth
 
-    func testTutorialTeachesArrowMatchAndRunway() {
-        let steps = TutorialContent.steps
-        XCTAssertGreaterThanOrEqual(steps.count, 3, "Tutorial should teach arrow-match, runway, and chaining")
+    func testTutorialBoardLessonsTeachOnlyLegalMovesAndOpenLanesInOrder() {
+        let boardStages: [TutorialStage] = TutorialContent.pages.compactMap {
+            if case let .board(stage) = $0 { return stage }
+            return nil
+        }
+        XCTAssertGreaterThanOrEqual(boardStages.count, 3, "Tutorial should teach arrow-match, lane, and chaining interactively")
 
-        // Step 1 teaches the arrow-matching flick (H1).
-        let first = steps[0]
-        XCTAssertTrue(
-            (first.titleEN + " " + first.subtitleEN).lowercased().contains("arrow"),
-            "First step must teach the arrow-matching flick"
-        )
+        for stage in boardStages {
+            XCTAssertFalse(stage.moves.isEmpty, "Every board lesson needs at least one taught move")
+            var board = stage.board
+            for move in stage.moves {
+                XCTAssertNotNil(board[move.row][move.column], "A taught move must point at a real block")
+                // Each scripted move must be escapable at the moment it is played — the tutorial
+                // never asks for a flick the real escapability rule would reject.
+                XCTAssertTrue(
+                    TutorialContent.isEscapable(on: board, at: move),
+                    "Taught move \(move) must have a clear lane when it is reached"
+                )
+                board[move.row][move.column] = nil // pop it; later moves see the opened lane
+            }
+            let remaining = board.flatMap { $0 }.compactMap { $0 }.count
+            XCTAssertEqual(remaining, 0, "The taught moves should clear the whole stage")
+        }
 
-        // Some step teaches the escapability runway-to-edge rule (H2).
-        XCTAssertTrue(
-            steps.contains { $0.subtitleEN.lowercased().contains("edge") },
-            "A step must teach that a block needs a clear lane to the edge"
-        )
+        // A lesson must demonstrate a lane opening: a move that is BLOCKED on the initial board
+        // and becomes legal only after an earlier pop clears its runway (the H2 escapability
+        // lesson, now shown rather than just stated).
+        let teachesLaneOpening = boardStages.contains { stage in
+            stage.moves.dropFirst().contains { !TutorialContent.isEscapable(on: stage.board, at: $0) }
+        }
+        XCTAssertTrue(teachesLaneOpening, "A lesson must show clearing a blocker to open a trapped lane")
+
+        // A lesson must teach chaining.
+        XCTAssertTrue(boardStages.contains { $0.teachesChain }, "A lesson must teach chaining")
+
+        // The taught copy still names the arrow-match and the lane/edge rule.
+        let copy = boardStages.map { ($0.titleEN + " " + $0.subtitleEN).lowercased() }.joined(separator: " ")
+        XCTAssertTrue(copy.contains("arrow"), "A lesson must teach the arrow-matching flick")
+        XCTAssertTrue(copy.contains("lane") || copy.contains("edge"), "A lesson must teach the clear-lane-to-edge rule")
     }
 
     func testResolveFlickAcceptsQuickFlickViaPredictedEnd() {
@@ -901,12 +975,46 @@ final class GameRulesTests: XCTestCase {
         XCTAssertNil(Direction.resolveFlick(translation: .zero, predictedEndTranslation: .zero))
     }
 
-    func testTutorialExpectedDirectionsMatchDisplayedArrows() {
-        // The gesture gate requires a flick matching the highlighted cell's arrow, so each
-        // step's expectedDirection must agree with the arrow it shows.
-        let arrowDirection: [String: Direction] = ["▲": .up, "▼": .down, "◀": .left, "▶": .right]
-        for step in TutorialContent.steps {
-            XCTAssertEqual(arrowDirection[step.arrow], step.expectedDirection, "Arrow \(step.arrow) must match its taught flick")
+    @MainActor
+    func testTutorialEnginePlaysThroughEveryLessonToCompletion() async {
+        // Driving the engine with each lesson's own scripted flicks must walk it all the way to
+        // the end (onComplete), proving the board lessons are completable purely by legal flicks.
+        var completed = false
+        let engine = TutorialEngine(reduceMotion: true, onComplete: { completed = true })
+
+        let boardStageCount = TutorialContent.pages.filter {
+            if case .board = $0 { return true }
+            return false
+        }.count
+
+        for _ in 0..<boardStageCount {
+            guard let stage = engine.currentStage else { break }
+            for move in stage.moves {
+                guard let direction = engine.cell(move.row, move.column)?.direction else {
+                    return XCTFail("Expected a block at taught move \(move)")
+                }
+                engine.flick(at: move, direction: direction)
+            }
+            // Let the engine's post-stage auto-advance fire before driving the next page.
+            try? await Task.sleep(nanoseconds: 600_000_000)
+        }
+
+        // The engine should now be on the heads-up page; its primary action finishes the tutorial.
+        engine.performHintedMove()
+        XCTAssertTrue(completed, "Playing every taught flick should finish the tutorial")
+    }
+
+    func testTutorialIntroducesSpecialBlocksAndBoards() {
+        // The final page must onboard the new special blocks / boards so they aren't a surprise.
+        let infoPages: [TutorialInfo] = TutorialContent.pages.compactMap {
+            if case let .info(info) = $0 { return info }
+            return nil
+        }
+        XCTAssertFalse(infoPages.isEmpty, "Tutorial should introduce the special blocks/boards")
+
+        let titles = infoPages.flatMap { $0.items }.map { $0.titleEN.lowercased() }
+        for expected in ["bomb", "armored", "wild"] {
+            XCTAssertTrue(titles.contains { $0.contains(expected) }, "Tutorial must introduce the \(expected) block")
         }
     }
 
@@ -1090,6 +1198,185 @@ final class GameRulesTests: XCTestCase {
             1,
             accuracy: 0.001
         )
+    }
+
+    // MARK: - Special blocks & board modifiers
+
+    func testWildBlockIsEscapableViaAnyClearLane() {
+        var board = GameRules.emptyBoard()
+        // A wild block whose own arrow (up) is blocked, but other lanes are clear.
+        board[3][2] = PopBlock(direction: .up, tone: .mistBlue, kind: .wild)
+        board[0][2] = PopBlock(direction: .down, tone: .mistBlue) // blocks the up lane
+        XCTAssertTrue(GameRules.isEscapable(on: board, row: 3, column: 2), "Wild is open via right/left/down")
+
+        // Now block every lane: up, down, left, right.
+        board[6][2] = PopBlock(direction: .down, tone: .mistBlue)  // blocks down
+        board[3][0] = PopBlock(direction: .left, tone: .mistBlue)  // blocks left
+        board[3][5] = PopBlock(direction: .right, tone: .mistBlue) // blocks right
+        XCTAssertFalse(GameRules.isEscapable(on: board, row: 3, column: 2), "Fully boxed-in wild is blocked")
+    }
+
+    @MainActor
+    func testWildBlockPopsInAnyOpenDirection() {
+        let model = GameModel(makeInitialBoard: false)
+        var board = GameRules.emptyBoard()
+        // Arrow points up, but we flick right (a clear lane). Wild accepts it.
+        board[3][2] = PopBlock(direction: .up, tone: .mistBlue, kind: .wild)
+        board[0][0] = PopBlock(direction: .up, tone: .mistBlue) // keep the board non-empty
+
+        model.loadBoardForTesting(board)
+        model.attemptPop(row: 3, column: 2, direction: .right, hapticsEnabled: false)
+
+        XCTAssertNil(model.board[3][2], "A wild block pops on any flick with a clear lane")
+        XCTAssertEqual(model.chain, 1)
+        XCTAssertEqual(model.score, 10)
+    }
+
+    @MainActor
+    func testBombDetonatesRowAndColumn() {
+        let model = GameModel(makeInitialBoard: false)
+        var board = GameRules.emptyBoard()
+        // Bomb points right with a clear lane (cols 3–5 empty). Row mates sit to the left;
+        // column mates above/below. An off-axis block keeps the board from fully clearing.
+        board[3][2] = PopBlock(direction: .right, tone: .mistBlue, kind: .bomb)
+        board[3][0] = PopBlock(direction: .left, tone: .mistBlue)
+        board[3][1] = PopBlock(direction: .left, tone: .mistBlue)
+        board[1][2] = PopBlock(direction: .up, tone: .mistBlue)
+        board[6][2] = PopBlock(direction: .down, tone: .mistBlue)
+        board[0][5] = PopBlock(direction: .up, tone: .mistBlue)
+
+        model.loadBoardForTesting(board)
+        model.attemptPop(row: 3, column: 2, direction: .right, hapticsEnabled: false)
+
+        XCTAssertNil(model.board[3][2])
+        for cleared in [(3, 0), (3, 1), (1, 2), (6, 2)] {
+            XCTAssertNil(model.board[cleared.0][cleared.1], "Detonation clears the bomb's row and column")
+        }
+        XCTAssertNotNil(model.board[0][5], "Blocks off the bomb's row and column survive")
+        XCTAssertEqual(model.chain, 1)
+        // pop (chain 1) = 10; detonated 4 blocks * 12 = 48; total 58.
+        XCTAssertEqual(model.score, 58)
+    }
+
+    @MainActor
+    func testArmoredBlockNeedsTwoFlicks() {
+        let model = GameModel(makeInitialBoard: false)
+        var board = GameRules.emptyBoard()
+        board[3][5] = PopBlock(direction: .right, tone: .mistBlue, kind: .armored, armor: 1)
+        board[0][0] = PopBlock(direction: .up, tone: .mistBlue)
+
+        model.loadBoardForTesting(board)
+
+        // First valid flick only cracks it — no pop, no chain, no score, not a miss.
+        model.attemptPop(row: 3, column: 5, direction: .right, hapticsEnabled: false)
+        XCTAssertNotNil(model.board[3][5])
+        XCTAssertEqual(model.board[3][5]?.armor, 0)
+        XCTAssertEqual(model.chain, 0)
+        XCTAssertEqual(model.score, 0)
+
+        // Second valid flick pops it normally.
+        model.attemptPop(row: 3, column: 5, direction: .right, hapticsEnabled: false)
+        XCTAssertNil(model.board[3][5])
+        XCTAssertEqual(model.chain, 1)
+        XCTAssertEqual(model.score, 10)
+    }
+
+    func testGeneratedDifficultyBoardsRemainClearableWithSpecials() {
+        for level in 1...4 {
+            let profile = BoardGenerationProfile.difficulty(level: level)
+            XCTAssertGreaterThan(profile.maxSpecialBlocks, 0, "Levels 1+ should spawn specials")
+            for seed in UInt64(1)...UInt64(16) {
+                var random = SeededRandomNumberGenerator(seed: seed &* UInt64(level + 1) &+ 7)
+                let board = GameRules.generatedBoard(using: &random, profile: profile)
+                XCTAssertTrue(
+                    GameRules.isClearable(board),
+                    "Level \(level), seed \(seed): a board with specials must stay clearable"
+                )
+                XCTAssertTrue(GameRules.hasPlayableMove(in: board))
+            }
+        }
+    }
+
+    func testWildSpecialsArePlacedOnlyOnAlreadyOpenCells() {
+        // Specials must be openness-neutral so they can't push a board past its difficulty
+        // profile's open-cell ceiling. Turning every wild back into a plain arrow block must not
+        // change how many cells are open — which only holds if wilds were placed solely on cells
+        // already open as normal blocks.
+        for level in 1...4 {
+            let profile = BoardGenerationProfile.difficulty(level: level)
+            for seed in UInt64(1)...UInt64(24) {
+                var random = SeededRandomNumberGenerator(seed: seed &* 131 &+ UInt64(level))
+                let board = GameRules.generatedBoard(using: &random, profile: profile)
+                var demoted = board
+                for row in 0..<GameRules.rows {
+                    for column in 0..<GameRules.columns where demoted[row][column]?.kind == .wild {
+                        demoted[row][column]?.kind = .normal
+                    }
+                }
+                XCTAssertEqual(
+                    GameRules.openPositions(in: board).count,
+                    GameRules.openPositions(in: demoted).count,
+                    "Level \(level), seed \(seed): wild specials must not add open cells"
+                )
+            }
+        }
+    }
+
+    @MainActor
+    func testBombPopDoesNotDoublePayUnlockBonus() {
+        let model = GameModel(makeInitialBoard: false)
+        var board = GameRules.emptyBoard()
+        // Bomb points right with a clear lane. Its detonation clears (3,1) and (5,3); removing
+        // (5,3) frees (5,5)'s left lane. Without the fix that freed cell would also pay an
+        // unlock bonus on top of the detonation points.
+        board[3][3] = PopBlock(direction: .right, tone: .mistBlue, kind: .bomb)
+        board[3][1] = PopBlock(direction: .left, tone: .mistBlue)
+        board[5][3] = PopBlock(direction: .down, tone: .mistBlue)
+        board[5][5] = PopBlock(direction: .left, tone: .mistBlue) // blocked by (5,3) until the blast
+
+        model.loadBoardForTesting(board)
+        XCTAssertFalse(GameRules.openPositions(in: model.board).contains(BoardPosition(row: 5, column: 5)))
+
+        model.attemptPop(row: 3, column: 3, direction: .right, hapticsEnabled: false)
+
+        XCTAssertNil(model.board[3][3])
+        XCTAssertNil(model.board[3][1])
+        XCTAssertNil(model.board[5][3])
+        XCTAssertNotNil(model.board[5][5])
+        XCTAssertTrue(GameRules.openPositions(in: model.board).contains(BoardPosition(row: 5, column: 5)), "The blast freed (5,5)")
+        // pop 10 + detonated 2 * 12 = 34. No unlock bonus for the blast-freed cell.
+        XCTAssertEqual(model.score, 34)
+        // The bomb's own "BOOM" toast surfaces (no longer coalesced away by an unlock toast).
+        XCTAssertEqual(model.boardToast?.title, "BOOM")
+    }
+
+    @MainActor
+    func testRushModifierDoublesPopScore() {
+        let model = GameModel(makeInitialBoard: false)
+        var board = GameRules.emptyBoard()
+        board[3][5] = PopBlock(direction: .right, tone: .mistBlue)
+        board[0][0] = PopBlock(direction: .up, tone: .mistBlue)
+
+        model.loadBoardForTesting(board, modifier: .rush)
+        model.swipe(row: 3, column: 5, hapticsEnabled: false)
+
+        XCTAssertEqual(model.score, 20, "Rush doubles per-pop score (10 → 20)")
+    }
+
+    @MainActor
+    func testBonusModifierTriplesClearBonusAndAddsTime() {
+        let fixedNow = Date(timeIntervalSince1970: 1_000_000)
+        let model = GameModel(makeInitialBoard: false, now: { fixedNow })
+        var board = GameRules.emptyBoard()
+        board[0][0] = PopBlock(direction: .up, tone: .mistBlue)
+
+        model.loadBoardForTesting(board, modifier: .bonus)
+        let timeBefore = model.time
+        model.swipe(row: 0, column: 0, hapticsEnabled: false) // clears the board
+
+        // pop 10; clear base = 200 + chain1*22 = 222; ×3 (bonus) = 666; total 676.
+        XCTAssertEqual(model.score, 676)
+        XCTAssertEqual(model.time, timeBefore + 5, "A Bonus board hands back time on clear")
     }
 
     @MainActor

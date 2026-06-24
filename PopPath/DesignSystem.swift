@@ -344,11 +344,13 @@ struct ArrowGlyph: View {
     }
 }
 
-/// The "this path is open" affordance — a mint outline plus a dark corner pip — drawn on
-/// every escapable block *by default* (so open vs. blocked is legible without the setting),
-/// and brightened with a slow pulse when `emphasized` (the Open-Path Highlight setting) is
-/// on. One definition shared by the live board and the tutorial so the two can't drift. The
-/// cue reads as a shape + brightness change, not a hue, so it survives grayscale.
+/// The "this path is open" affordance — a mint outline plus a dark corner pip with a slow
+/// pulse — drawn ONLY when `emphasized` is on. `emphasized` is the Practice Mode / Open-Path
+/// Highlight setting (off by default), so a normal run shows no open cue at all and the player
+/// reads the arrows themselves; turning it on reveals the open paths and flips the run into
+/// Practice Mode. One definition shared by the live board and the tutorial (which always
+/// emphasizes, since it's a teaching surface) so the two can't drift. The cue reads as a shape
+/// + brightness change, not a hue, so it survives grayscale.
 struct OpenPathCue: ViewModifier {
     let isOpen: Bool
     let emphasized: Bool
@@ -357,26 +359,22 @@ struct OpenPathCue: ViewModifier {
 
     @State private var pulse = false
 
+    private var showsCue: Bool { isOpen && emphasized }
+
     func body(content: Content) -> some View {
         content
             .overlay {
-                if isOpen {
+                if showsCue {
                     RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
                         .stroke(strokeColor, lineWidth: strokeWidth)
-                        .shadow(
-                            color: Color.ppMintText.opacity(emphasized ? 0.22 : 0.12),
-                            radius: emphasized ? 12 : 6,
-                            x: 0,
-                            y: emphasized ? 5 : 3
-                        )
+                        .shadow(color: Color.ppMintText.opacity(0.22), radius: 12, x: 0, y: 5)
                 }
             }
             .overlay(alignment: .topTrailing) {
-                if isOpen {
+                if showsCue {
                     Circle()
                         .fill(Color.ppMintButtonText)
                         .frame(width: 7, height: 7)
-                        .opacity(emphasized ? 1 : 0.9)
                         .padding(6)
                 }
             }
@@ -390,26 +388,19 @@ struct OpenPathCue: ViewModifier {
             )
     }
 
-    // When emphasized, `pulse` oscillates the stroke between resting and bright via the
-    // repeating animation above; when not, the cue rests at a subtle always-on outline.
+    // `pulse` oscillates the stroke between resting and bright via the repeating animation above.
     private var strokeColor: Color {
-        guard isOpen else { return .clear }
-        if emphasized {
-            return Color.ppFreshMint.opacity(pulse && !reduceMotion ? 0.45 : 0.95)
-        }
-        return Color.ppFreshMint.opacity(0.55)
+        guard showsCue else { return .clear }
+        return Color.ppFreshMint.opacity(pulse && !reduceMotion ? 0.45 : 0.95)
     }
 
     private var strokeWidth: CGFloat {
-        guard isOpen else { return 0 }
-        if emphasized {
-            return pulse && !reduceMotion ? 7 : 3
-        }
-        return 2
+        guard showsCue else { return 0 }
+        return pulse && !reduceMotion ? 7 : 3
     }
 
     private func syncPulse() {
-        guard isOpen, emphasized, !reduceMotion else {
+        guard showsCue, !reduceMotion else {
             pulse = false
             return
         }

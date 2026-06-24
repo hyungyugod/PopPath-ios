@@ -79,11 +79,126 @@ enum BlockTone: CaseIterable, Codable {
     case lavenderMist
 }
 
+/// What kind of block this is. Normal blocks follow the base rule (flick the arrow, needs a
+/// clear lane). Specials add variety without breaking that contract:
+/// - `bomb`: pops like a normal block, then detonates its whole row and column.
+/// - `armored`: takes one extra flick — the first valid flick only cracks it.
+/// - `wild`: pops with a flick in *any* direction that has a clear lane (its arrow is a hint,
+///    not a requirement).
+enum BlockKind: Equatable, Codable {
+    case normal
+    case bomb
+    case armored
+    case wild
+
+    var isSpecial: Bool { self != .normal }
+}
+
 struct PopBlock: Identifiable, Equatable, Codable {
     var id = UUID()
     var direction: Direction
     var tone: BlockTone
     var isMiss = false
+    var kind: BlockKind = .normal
+    /// Remaining cracks before an armored block pops. A fresh armored block starts at 1, so the
+    /// first valid flick cracks it (armor → 0) and the second pops it. Ignored for other kinds.
+    var armor = 0
+
+    // Decode each new field with a default so a board encoded by an earlier build still loads.
+    init(
+        id: UUID = UUID(),
+        direction: Direction,
+        tone: BlockTone,
+        isMiss: Bool = false,
+        kind: BlockKind = .normal,
+        armor: Int = 0
+    ) {
+        self.id = id
+        self.direction = direction
+        self.tone = tone
+        self.isMiss = isMiss
+        self.kind = kind
+        self.armor = armor
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
+        direction = try c.decode(Direction.self, forKey: .direction)
+        tone = try c.decode(BlockTone.self, forKey: .tone)
+        isMiss = try c.decodeIfPresent(Bool.self, forKey: .isMiss) ?? false
+        kind = try c.decodeIfPresent(BlockKind.self, forKey: .kind) ?? .normal
+        armor = try c.decodeIfPresent(Int.self, forKey: .armor) ?? 0
+    }
+}
+
+/// A per-board variety modifier rolled when a board is dealt (deterministic for the Daily).
+/// Most boards are `none`; the others change the texture of a single board so no two rounds
+/// feel identical.
+enum BoardModifier: Equatable, Codable {
+    case none
+    /// Everything scores double, but chains decay faster — a high-octane board.
+    case rush
+    /// Clearing the board pays a much bigger bonus and grants extra time — go for the full sweep.
+    case bonus
+
+    /// Multiplier applied to per-pop / unlock / bomb scores.
+    var scoreMultiplier: Double {
+        switch self {
+        case .rush: return 2.0
+        case .none, .bonus: return 1.0
+        }
+    }
+
+    /// Multiplier applied to the board-clear bonus.
+    var clearMultiplier: Double {
+        switch self {
+        case .rush: return 2.0
+        case .bonus: return 3.0
+        case .none: return 1.0
+        }
+    }
+
+    /// Factor applied to the chain-decay window (rush makes chains lapse faster).
+    var decayFactor: Double {
+        switch self {
+        case .rush: return 0.7
+        case .none, .bonus: return 1.0
+        }
+    }
+
+    /// Seconds added to the round clock when this board is cleared.
+    var clearTimeBonus: TimeInterval {
+        switch self {
+        case .bonus: return 5
+        case .none, .rush: return 0
+        }
+    }
+
+    static func roll<R: RandomNumberGenerator>(using random: inout R) -> BoardModifier {
+        let value = Double.random(in: 0..<1, using: &random)
+        if value < 0.18 { return .rush }
+        if value < 0.30 { return .bonus }
+        return .none
+    }
+
+    /// Short on-board chip label.
+    func label(language: AppLanguage) -> String {
+        switch self {
+        case .none: return ""
+        case .rush: return language.text("RUSH ×2", "러시 ×2")
+        case .bonus: return language.text("BONUS", "보너스")
+        }
+    }
+
+    /// Spoken VoiceOver announcement when the board's modifier changes.
+    func announcement(language: AppLanguage) -> String {
+        switch self {
+        case .none: return ""
+        case .rush: return language.text("Rush board. Double points, faster chains.", "러시 보드. 점수 2배, 더 빠른 체인.")
+        case .bonus: return language.text("Bonus board. Big clear bonus and extra time.", "보너스 보드. 싹쓸이 보너스와 추가 시간.")
+        }
+    }
 }
 
 struct BoardPosition: Hashable {
@@ -125,6 +240,14 @@ struct BoardGenerationProfile: Equatable {
     var minimumFilledCells: Int
     var maximumFilledCells: Int
     var maxAttempts: Int
+    /// Upper bound on special blocks sprinkled onto a generated board (0 = none). The actual
+    /// count is rolled in `0...maxSpecialBlocks` so some boards stay plain. `.standard` keeps
+    /// this at 0, so the generic generator and its tests see no specials.
+    var maxSpecialBlocks = 0
+    /// Relative weights for which special kind to place. Ignored when `maxSpecialBlocks == 0`.
+    var bombWeight = 0.0
+    var armoredWeight = 0.0
+    var wildWeight = 0.0
 
     static let standard = BoardGenerationProfile(
         minimumOpenCells: 4,
@@ -137,6 +260,7 @@ struct BoardGenerationProfile: Equatable {
     static func difficulty(level: Int) -> BoardGenerationProfile {
         switch max(0, min(level, 4)) {
         case 0:
+            // Plain opener: no specials yet so the very first board after the tutorial is clean.
             return .standard
         case 1:
             return BoardGenerationProfile(
@@ -144,7 +268,11 @@ struct BoardGenerationProfile: Equatable {
                 maximumOpenCells: 10,
                 minimumFilledCells: 31,
                 maximumFilledCells: 39,
-                maxAttempts: 140
+                maxAttempts: 140,
+                maxSpecialBlocks: 2,
+                bombWeight: 1.0,
+                armoredWeight: 0.9,
+                wildWeight: 1.1
             )
         case 2:
             return BoardGenerationProfile(
@@ -152,7 +280,11 @@ struct BoardGenerationProfile: Equatable {
                 maximumOpenCells: 9,
                 minimumFilledCells: 32,
                 maximumFilledCells: 39,
-                maxAttempts: 150
+                maxAttempts: 150,
+                maxSpecialBlocks: 3,
+                bombWeight: 1.2,
+                armoredWeight: 1.0,
+                wildWeight: 0.9
             )
         case 3:
             return BoardGenerationProfile(
@@ -160,7 +292,11 @@ struct BoardGenerationProfile: Equatable {
                 maximumOpenCells: 8,
                 minimumFilledCells: 33,
                 maximumFilledCells: 40,
-                maxAttempts: 160
+                maxAttempts: 160,
+                maxSpecialBlocks: 4,
+                bombWeight: 1.3,
+                armoredWeight: 1.2,
+                wildWeight: 0.8
             )
         default:
             // Level 4: humane open-cell floor of 4 (was 2) so the hardest boards still
@@ -170,7 +306,11 @@ struct BoardGenerationProfile: Equatable {
                 maximumOpenCells: 7,
                 minimumFilledCells: 34,
                 maximumFilledCells: 40,
-                maxAttempts: 180
+                maxAttempts: 180,
+                maxSpecialBlocks: 4,
+                bombWeight: 1.4,
+                armoredWeight: 1.3,
+                wildWeight: 0.7
             )
         }
     }
@@ -307,6 +447,10 @@ struct RoundClock: Equatable {
     mutating func reduceRemaining(by seconds: TimeInterval) {
         deadline = deadline.addingTimeInterval(-seconds)
     }
+
+    mutating func extendRemaining(by seconds: TimeInterval) {
+        deadline = deadline.addingTimeInterval(seconds)
+    }
 }
 
 enum GameRules {
@@ -322,6 +466,16 @@ enum GameRules {
     }
 
     static func generatedBoard<R: RandomNumberGenerator>(
+        using random: inout R,
+        profile: BoardGenerationProfile = .standard
+    ) -> [[PopBlock?]] {
+        let base = baseGeneratedBoard(using: &random, profile: profile)
+        // Specials are layered on last and only ever ADD escape options (wild) or extra effects
+        // (bomb/armored), so they can't break the clearable guarantee `baseGeneratedBoard` makes.
+        return applyingSpecials(to: base, using: &random, profile: profile)
+    }
+
+    private static func baseGeneratedBoard<R: RandomNumberGenerator>(
         using random: inout R,
         profile: BoardGenerationProfile = .standard
     ) -> [[PopBlock?]] {
@@ -434,11 +588,80 @@ enum GameRules {
         board.map { row in
             row.map { block in
                 guard let block else { return ".." }
-                return directionCode(for: block.direction) + toneCode(for: block.tone)
+                // Normal blocks append no kind code, so plain boards keep their old signatures.
+                return directionCode(for: block.direction) + toneCode(for: block.tone) + kindCode(for: block.kind)
             }
             .joined(separator: "")
         }
         .joined(separator: "|")
+    }
+
+    /// Upgrades up to `profile.maxSpecialBlocks` (rolled, so some boards stay plain) of the
+    /// board's blocks into special kinds, chosen by the profile's weights. Runs on the same RNG
+    /// and draw order as generation, so a seeded Daily board is byte-identical for everyone.
+    private static func applyingSpecials<R: RandomNumberGenerator>(
+        to board: [[PopBlock?]],
+        using random: inout R,
+        profile: BoardGenerationProfile
+    ) -> [[PopBlock?]] {
+        guard profile.maxSpecialBlocks > 0 else { return board }
+        let totalWeight = profile.bombWeight + profile.armoredWeight + profile.wildWeight
+        guard totalWeight > 0 else { return board }
+
+        var positions = filledPositions(in: board)
+        guard !positions.isEmpty else { return board }
+        positions.shuffle(using: &random)
+
+        let count = min(Int.random(in: 0...profile.maxSpecialBlocks, using: &random), positions.count)
+        guard count > 0 else { return board }
+
+        var board = board
+        for position in positions.prefix(count) {
+            guard var block = board[position.row][position.column] else { continue }
+            var kind = pickSpecialKind(using: &random, profile: profile, totalWeight: totalWeight)
+            // Wild adds escape directions, so making a *closed* cell wild would lift the board's
+            // open-cell count above the difficulty profile's ceiling. Only turn an already-open
+            // cell wild (openness-neutral); otherwise fall back to bomb, which keeps the cell's
+            // original arrow and so leaves the open-cell count unchanged.
+            if kind == .wild, !isEscapable(on: board, row: position.row, column: position.column) {
+                kind = .bomb
+            }
+            switch kind {
+            case .bomb:
+                block.kind = .bomb
+            case .armored:
+                block.kind = .armored
+                block.armor = 1
+            case .wild:
+                block.kind = .wild
+            case .normal:
+                continue
+            }
+            board[position.row][position.column] = block
+        }
+        return board
+    }
+
+    private static func pickSpecialKind<R: RandomNumberGenerator>(
+        using random: inout R,
+        profile: BoardGenerationProfile,
+        totalWeight: Double
+    ) -> BlockKind {
+        var roll = Double.random(in: 0..<totalWeight, using: &random)
+        if roll < profile.bombWeight { return .bomb }
+        roll -= profile.bombWeight
+        if roll < profile.armoredWeight { return .armored }
+        return .wild
+    }
+
+    private static func filledPositions(in board: [[PopBlock?]]) -> [BoardPosition] {
+        var result: [BoardPosition] = []
+        for row in 0..<rows {
+            for column in 0..<columns where board[row][column] != nil {
+                result.append(BoardPosition(row: row, column: column))
+            }
+        }
+        return result
     }
 
     private static func clearableRandomBoard<R: RandomNumberGenerator>(
@@ -492,14 +715,13 @@ enum GameRules {
         return nil
     }
 
-    static func isEscapable(on board: [[PopBlock?]], row: Int, column: Int) -> Bool {
-        guard isInside(row: row, column: column),
-              let block = board[row][column]
-        else {
-            return false
-        }
+    /// Whether the cell at (row,column) has a clear runway to the edge in `direction`. Pure
+    /// geometry — it ignores the block's own arrow — so wild blocks (which pop in any open lane)
+    /// and wild-flick validation can share it.
+    static func hasClearRunway(on board: [[PopBlock?]], row: Int, column: Int, direction: Direction) -> Bool {
+        guard isInside(row: row, column: column), board[row][column] != nil else { return false }
 
-        let step = block.direction.delta
+        let step = direction.delta
         var nextRow = row + step.row
         var nextColumn = column + step.column
 
@@ -512,6 +734,24 @@ enum GameRules {
         }
 
         return true
+    }
+
+    static func isEscapable(on board: [[PopBlock?]], row: Int, column: Int) -> Bool {
+        guard isInside(row: row, column: column),
+              let block = board[row][column]
+        else {
+            return false
+        }
+
+        // A wild block is open if *any* direction has a clear lane; a normal/bomb/armored block
+        // is open only along its own arrow.
+        if block.kind == .wild {
+            return Direction.allCases.contains {
+                hasClearRunway(on: board, row: row, column: column, direction: $0)
+            }
+        }
+
+        return hasClearRunway(on: board, row: row, column: column, direction: block.direction)
     }
 
     static func openPositions(in board: [[PopBlock?]]) -> Set<BoardPosition> {
@@ -657,6 +897,15 @@ enum GameRules {
         switch tone {
         case .mistBlue: "B"
         case .lavenderMist: "P"
+        }
+    }
+
+    private static func kindCode(for kind: BlockKind) -> String {
+        switch kind {
+        case .normal: ""
+        case .bomb: "b"
+        case .armored: "a"
+        case .wild: "w"
         }
     }
 }

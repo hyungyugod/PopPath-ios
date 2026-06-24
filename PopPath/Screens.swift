@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 struct HomeView: View {
     @Environment(\.appLanguage) private var language
@@ -234,9 +235,17 @@ struct ResultView: View {
 
     private var resultContent: some View {
         VStack(spacing: 0) {
-            Text(summary.mode == .daily
-                ? language.text("Daily complete", "오늘 길 완료!")
-                : language.text("Time's up", "시간 끝!"))
+            if summary.isPractice {
+                Label(language.text("Practice — not recorded", "연습 — 기록 안 됨"), systemImage: "graduationcap.fill")
+                    .font(.ppBody(12, weight: .heavy, language: language))
+                    .foregroundStyle(Color.ppMintButtonText)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 7)
+                    .background(Capsule(style: .continuous).fill(Color.ppFreshMint))
+                    .padding(.bottom, 12)
+            }
+
+            Text(modeHeadline)
                 .font(.ppDisplay(16, weight: .medium, language: language))
                 .foregroundStyle(Color.ppWarmGray)
 
@@ -276,7 +285,7 @@ struct ResultView: View {
                     .padding(.top, 14)
             }
 
-            if summary.mode == .daily, summary.lifetimeStats.currentStreak > 0 {
+            if summary.mode == .daily, !summary.isPractice, summary.lifetimeStats.currentStreak > 0 {
                 Label(
                     language.text(
                         "\(summary.lifetimeStats.currentStreak)-day streak",
@@ -366,6 +375,17 @@ struct ResultView: View {
                 .shadow(color: Color.ppInkGray.opacity(0.08), radius: 14, x: 0, y: -5)
                 .ignoresSafeArea(edges: .bottom)
         }
+    }
+
+    /// The small mode line above the headline. A practice run is neutral — it didn't "complete"
+    /// the Daily (the day is still playable) — so it never claims "Daily complete".
+    private var modeHeadline: String {
+        if summary.isPractice {
+            return language.text("Practice run", "연습 완료")
+        }
+        return summary.mode == .daily
+            ? language.text("Daily complete", "오늘 길 완료!")
+            : language.text("Time's up", "시간 끝!")
     }
 
     private var headline: String {
@@ -775,88 +795,354 @@ private extension Achievement {
     }
 }
 
-/// One onboarding step: which mini-board cell is highlighted, the flick the player must
-/// perform to advance, and the EN/KO copy. File scope (not private) so the taught copy and the
-/// required gesture are unit-testable.
-struct TutorialStep: Equatable {
-    let highlightIndex: Int
-    let arrow: String
-    let expectedDirection: Direction
+/// A single cell on the tutorial's small practice board.
+struct TutorialCell: Equatable {
+    var direction: Direction
+    var tone: BlockTone
+}
+
+/// One interactive lesson: a real (small) board plus the ordered cells the player pops to
+/// finish it. The engine validates flicks against the *actual* escapability rule on this board,
+/// so the tutorial can only ever teach a legal move — and each correct flick visibly slides the
+/// block off its edge and clears the lane behind it.
+struct TutorialStage: Equatable {
     let titleEN: String
     let titleKO: String
     let subtitleEN: String
     let subtitleKO: String
+    let board: [[TutorialCell?]]
+    /// Cells to pop, in order; the head is the currently-highlighted target. Each is popped in
+    /// its own arrow direction.
+    let moves: [BoardPosition]
+    var teachesChain = false
+}
+
+/// One row of the non-interactive heads-up card that introduces special blocks / boards.
+struct TutorialInfoItem: Equatable {
+    let systemImage: String
+    let titleEN: String
+    let titleKO: String
+    let detailEN: String
+    let detailKO: String
+}
+
+struct TutorialInfo: Equatable {
+    let titleEN: String
+    let titleKO: String
+    let subtitleEN: String
+    let subtitleKO: String
+    let items: [TutorialInfoItem]
+}
+
+enum TutorialPage: Equatable {
+    case board(TutorialStage)
+    case info(TutorialInfo)
 }
 
 enum TutorialContent {
-    /// Each step teaches a true rule (post-R1 direction-true input): the arrow-matching flick
-    /// (H1), the runway-to-edge escapability rule (H2), clearing in order to open lanes, and
-    /// chaining. The highlighted cell's displayed arrow matches `expectedDirection`.
-    static let steps: [TutorialStep] = [
-        TutorialStep(
-            highlightIndex: 5,
-            arrow: "▶",
-            expectedDirection: .right,
+    static let columns = 4
+
+    /// Same rule as the live game, on a small grid: a block escapes only if its arrow has a
+    /// clear runway to the board edge. The tutorial engine validates every flick against this,
+    /// so it can never teach a move the real game would reject.
+    static func isEscapable(on board: [[TutorialCell?]], at pos: BoardPosition) -> Bool {
+        guard board.indices.contains(pos.row),
+              board[pos.row].indices.contains(pos.column),
+              let cell = board[pos.row][pos.column]
+        else {
+            return false
+        }
+        let step = cell.direction.delta
+        var row = pos.row + step.row
+        var column = pos.column + step.column
+        while board.indices.contains(row), board[row].indices.contains(column) {
+            if board[row][column] != nil { return false }
+            row += step.row
+            column += step.column
+        }
+        return true
+    }
+
+    private static func grid(_ rows: [[Direction?]]) -> [[TutorialCell?]] {
+        rows.enumerated().map { rowIndex, row in
+            row.enumerated().map { columnIndex, direction in
+                direction.map {
+                    TutorialCell(
+                        direction: $0,
+                        tone: (rowIndex + columnIndex).isMultiple(of: 2) ? .mistBlue : .lavenderMist
+                    )
+                }
+            }
+        }
+    }
+
+    /// Lesson 1: a lone block with a clear lane — flick the way the arrow points and watch it
+    /// slide off the edge. Lesson 2: a block trapped behind another — clear the blocker first
+    /// and the trapped block's lane lights up. Lesson 3: pop a row in a row to build a chain.
+    /// Then a heads-up on the special blocks and boards now in play.
+    static let pages: [TutorialPage] = [
+        .board(TutorialStage(
             titleEN: "Flick the way the arrow points",
             titleKO: "화살표 방향으로 밀어요",
-            subtitleEN: "Only a flick that matches the arrow clears a block.",
-            subtitleKO: "화살표와 같은 방향으로 밀어야 사라져요"
-        ),
-        TutorialStep(
-            highlightIndex: 0,
-            arrow: "▲",
-            expectedDirection: .up,
-            titleEN: "Clear a lane to the edge",
-            titleKO: "가장자리까지 길을 비워요",
-            subtitleEN: "A block only pops if its arrow has a clear lane to the edge.",
-            subtitleKO: "화살표 앞이 가장자리까지 뚫려 있어야 터져요"
-        ),
-        TutorialStep(
-            highlightIndex: 2,
-            arrow: "▼",
-            expectedDirection: .down,
-            titleEN: "Open new lanes in order",
-            titleKO: "순서대로 새 길을 열어요",
-            subtitleEN: "Clearing one block can free others to pop next.",
-            subtitleKO: "한 블록을 치우면 다른 길이 열려요"
-        ),
-        TutorialStep(
-            highlightIndex: 7,
-            arrow: "▶",
-            expectedDirection: .right,
-            titleEN: "Chain flicks for a high score",
-            titleKO: "연속으로 밀어 점수를 올려요",
-            subtitleEN: "Keep flicking without a miss to build a chain.",
-            subtitleKO: "막히지 않고 이어 밀면 체인이 쌓여요"
-        )
+            subtitleEN: "Flick the block toward its arrow — it slides off the edge and pops.",
+            subtitleKO: "화살표 방향으로 밀면 블록이 가장자리로 빠지며 팡!",
+            board: grid([
+                [nil, nil, nil, nil],
+                [nil, .right, nil, nil]
+            ]),
+            moves: [BoardPosition(row: 1, column: 1)]
+        )),
+        .board(TutorialStage(
+            titleEN: "Clear the lane first",
+            titleKO: "막힌 길을 먼저 비워요",
+            subtitleEN: "The left block is stuck — its lane is blocked. Clear the one in front, and its path opens up.",
+            subtitleKO: "왼쪽 블록은 길이 막혀 못 가요. 앞의 블록을 먼저 치우면 길이 열려요.",
+            board: grid([
+                [nil, nil, nil, nil],
+                [.right, .right, nil, nil]
+            ]),
+            moves: [BoardPosition(row: 1, column: 1), BoardPosition(row: 1, column: 0)]
+        )),
+        .board(TutorialStage(
+            titleEN: "Chain your pops",
+            titleKO: "이어서 팡팡, 체인!",
+            subtitleEN: "Pop without missing to build a chain — longer chains score much more.",
+            subtitleKO: "막히지 않고 이어 밀면 체인이 쌓여요 — 길수록 점수가 쑥쑥!",
+            board: grid([
+                [nil, nil, nil, nil],
+                [.up, .up, .up, .up]
+            ]),
+            moves: [
+                BoardPosition(row: 1, column: 0),
+                BoardPosition(row: 1, column: 1),
+                BoardPosition(row: 1, column: 2),
+                BoardPosition(row: 1, column: 3)
+            ],
+            teachesChain: true
+        )),
+        .info(TutorialInfo(
+            titleEN: "New: special blocks & boards",
+            titleKO: "새로워진 블록과 보드",
+            subtitleEN: "Keep an eye out for these — they shake up every round.",
+            subtitleKO: "플레이하다 보면 등장해요 — 매 판이 달라져요.",
+            items: [
+                TutorialInfoItem(
+                    systemImage: "burst.fill",
+                    titleEN: "Bomb", titleKO: "폭탄",
+                    detailEN: "Pops its whole row and column at once.",
+                    detailKO: "같은 가로·세로 줄을 한 번에 정리해요."
+                ),
+                TutorialInfoItem(
+                    systemImage: "shield.lefthalf.filled",
+                    titleEN: "Armored", titleKO: "단단한 블록",
+                    detailEN: "Takes two flicks to break.",
+                    detailKO: "두 번 밀어야 깨져요."
+                ),
+                TutorialInfoItem(
+                    systemImage: "arrow.up.and.down.and.arrow.left.and.right",
+                    titleEN: "Wild", titleKO: "만능 블록",
+                    detailEN: "Flick it any open direction.",
+                    detailKO: "열린 쪽 아무 방향으로나 밀어요."
+                ),
+                TutorialInfoItem(
+                    systemImage: "bolt.fill",
+                    titleEN: "Rush board", titleKO: "러시 보드",
+                    detailEN: "Double points — but chains fade faster.",
+                    detailKO: "점수 2배 — 대신 체인이 더 빨리 식어요."
+                )
+            ]
+        ))
     ]
+}
+
+/// Drives the interactive tutorial: which page is showing, the live state of the small board,
+/// and validation of each flick against the real escapability rule.
+@MainActor
+final class TutorialEngine: ObservableObject {
+    /// A block currently sliding off the board after a correct flick.
+    struct Popping: Identifiable, Equatable {
+        let id = UUID()
+        let row: Int
+        let column: Int
+        let direction: Direction
+        let tone: BlockTone
+    }
+
+    let pages = TutorialContent.pages
+    @Published private(set) var pageIndex = 0
+    @Published private(set) var board: [[TutorialCell?]] = []
+    @Published private(set) var moveIndex = 0
+    @Published private(set) var chain = 0
+    @Published private(set) var popping: [Popping] = []
+    /// The cell that just rejected a flick (wrong direction on the target, or a flick on a
+    /// still-blocked block), so the view can nudge it. Cleared after a beat.
+    @Published private(set) var rejectedAt: BoardPosition?
+    @Published private(set) var tries = 0
+
+    private let reduceMotion: Bool
+    private let onComplete: () -> Void
+    /// Invalidates stale scheduled page-advances when the page changes out from under them.
+    private var advanceToken = 0
+
+    init(reduceMotion: Bool, onComplete: @escaping () -> Void) {
+        self.reduceMotion = reduceMotion
+        self.onComplete = onComplete
+        loadCurrentPage()
+    }
+
+    var currentPage: TutorialPage { pages[min(pageIndex, pages.count - 1)] }
+    var isLastPage: Bool { pageIndex >= pages.count - 1 }
+
+    var currentStage: TutorialStage? {
+        if case let .board(stage) = currentPage { return stage }
+        return nil
+    }
+
+    var currentInfo: TutorialInfo? {
+        if case let .info(info) = currentPage { return info }
+        return nil
+    }
+
+    /// Next cell to pop on a board page (nil on an info page or once the stage is cleared).
+    var highlight: BoardPosition? {
+        guard let stage = currentStage, moveIndex < stage.moves.count else { return nil }
+        return stage.moves[moveIndex]
+    }
+
+    var expectedDirection: Direction? {
+        guard let highlight, let cell = cell(highlight.row, highlight.column) else { return nil }
+        return cell.direction
+    }
+
+    func isEscapable(_ pos: BoardPosition) -> Bool {
+        TutorialContent.isEscapable(on: board, at: pos)
+    }
+
+    func cell(_ row: Int, _ column: Int) -> TutorialCell? {
+        guard board.indices.contains(row), board[row].indices.contains(column) else { return nil }
+        return board[row][column]
+    }
+
+    private func loadCurrentPage() {
+        moveIndex = 0
+        chain = 0
+        tries = 0
+        rejectedAt = nil
+        popping = []
+        board = currentStage?.board ?? []
+    }
+
+    /// Validate a flick on the small board against the scripted next move.
+    func flick(at pos: BoardPosition, direction: Direction) {
+        guard let highlight, let expectedDirection else { return }
+        if pos == highlight {
+            if direction == expectedDirection, isEscapable(pos) {
+                pop(at: pos)
+            } else {
+                reject(at: pos)
+            }
+        } else if cell(pos.row, pos.column) != nil {
+            // A real block, just not the one that can move yet — nudge it so "it's blocked" lands.
+            reject(at: pos)
+        }
+    }
+
+    /// VoiceOver / "Show me" fallback: perform the next scripted move automatically.
+    func performHintedMove() {
+        guard let highlight else {
+            if currentInfo != nil { advancePage() }
+            return
+        }
+        pop(at: highlight)
+    }
+
+    private func pop(at pos: BoardPosition) {
+        guard let popped = cell(pos.row, pos.column) else { return }
+        rejectedAt = nil
+        popping.append(Popping(row: pos.row, column: pos.column, direction: popped.direction, tone: popped.tone))
+        board[pos.row][pos.column] = nil
+        moveIndex += 1
+        if currentStage?.teachesChain == true { chain += 1 }
+
+        let slide = reduceMotion ? 0.22 : 0.34
+        Task { [weak self] in
+            try? await Task.sleep(nanoseconds: UInt64(slide * 1_000_000_000))
+            self?.retireOldestPop()
+        }
+
+        if moveIndex >= (currentStage?.moves.count ?? 0) {
+            advanceToken += 1
+            let token = advanceToken
+            Task { [weak self] in
+                try? await Task.sleep(nanoseconds: UInt64((slide + 0.2) * 1_000_000_000))
+                guard let self, token == self.advanceToken else { return }
+                self.advancePage()
+            }
+        }
+    }
+
+    private func retireOldestPop() {
+        if !popping.isEmpty { popping.removeFirst() }
+    }
+
+    private func reject(at pos: BoardPosition) {
+        tries += 1
+        rejectedAt = pos
+        Task { [weak self] in
+            try? await Task.sleep(nanoseconds: 850_000_000)
+            if self?.rejectedAt == pos { self?.rejectedAt = nil }
+        }
+    }
+
+    func advancePage() {
+        advanceToken += 1
+        if isLastPage {
+            onComplete()
+        } else {
+            pageIndex += 1
+            loadCurrentPage()
+        }
+    }
+
+    func skip() {
+        advanceToken += 1
+        onComplete()
+    }
+
+    /// A "Show me" / "Next" affordance: appears after a couple of fumbles on a board page, and
+    /// is the primary action on the info page — so nobody is ever stuck.
+    var showsFallbackButton: Bool {
+        if currentStage == nil { return true }
+        return tries >= 2 && highlight != nil
+    }
 }
 
 struct TutorialView: View {
     @Environment(\.appLanguage) private var language
 
-    let reduceMotion: Bool
-    let onComplete: () -> Void
+    @StateObject private var engine: TutorialEngine
+    private let reduceMotion: Bool
 
-    @State private var step = 0
-    @State private var pulse = false
-    @State private var tries = 0
-    @State private var wrongFlick = false
+    @State private var handBob = false
 
-    private let steps = TutorialContent.steps
-    private var totalSteps: Int { steps.count }
-    private var currentStep: Int { min(step, totalSteps - 1) }
-    private var config: TutorialStep { steps[currentStep] }
-    private var isLastStep: Bool { currentStep == totalSteps - 1 }
-    /// The flick is the taught path; the explicit button is the fallback that appears after a
-    /// couple of misses (and always on the final step) so nobody is ever stuck (H4).
-    private var showFallbackButton: Bool { tries >= 2 || isLastStep }
+    init(reduceMotion: Bool, onComplete: @escaping () -> Void) {
+        self.reduceMotion = reduceMotion
+        _engine = StateObject(wrappedValue: TutorialEngine(reduceMotion: reduceMotion, onComplete: onComplete))
+    }
+
+    private let cellSize: CGFloat = 52
+    private let cellSpacing: CGFloat = 8
+    private var cellStride: CGFloat { cellSize + cellSpacing }
+    private static let boardSpace = "tutorialBoard"
 
     var body: some View {
         VStack(spacing: 0) {
             Spacer()
 
-            miniBoard
+            pageContent
+                .frame(maxWidth: .infinity)
+                .id(engine.pageIndex)
+                .transition(.opacity)
 
             // Wraps rather than clamping to one line so the taught copy stays legible at
             // larger Dynamic Type sizes (H6).
@@ -870,7 +1156,7 @@ struct TutorialView: View {
                 .background(RoundedRectangle(cornerRadius: 22, style: .continuous).fill(Color.ppInkGray))
                 .shadow(color: Color.ppInkGray.opacity(0.2), radius: 20, x: 0, y: 10)
                 .padding(.horizontal, 12)
-                .padding(.top, 34)
+                .padding(.top, 30)
 
             Text(localizedSubtitle)
                 .font(.ppBody(13, weight: .medium, language: language))
@@ -880,54 +1166,90 @@ struct TutorialView: View {
                 .padding(.horizontal, 12)
                 .padding(.top, 14)
 
-            Text(flickHint)
-                .font(.ppBody(12, weight: .heavy, language: language))
-                .foregroundStyle(wrongFlick ? Color.ppSoftCoral : Color.ppMintText)
-                .padding(.top, 10)
+            if engine.currentStage != nil {
+                Text(hintText)
+                    .font(.ppBody(12, weight: .heavy, language: language))
+                    .foregroundStyle(engine.rejectedAt != nil ? Color.ppSoftCoral : Color.ppMintText)
+                    .padding(.top, 10)
+                    .animation(.easeInOut(duration: 0.2), value: engine.rejectedAt)
+            }
 
             Spacer()
 
-            if showFallbackButton {
-                PrimaryPopButton(primaryButtonTitle, systemImage: primaryButtonIcon, action: advance)
-                    .padding(.bottom, 12)
-                    .transition(.opacity)
+            if engine.showsFallbackButton {
+                PrimaryPopButton(primaryButtonTitle, systemImage: primaryButtonIcon) {
+                    engine.performHintedMove()
+                }
+                .padding(.bottom, 12)
+                .transition(.opacity)
             }
 
-            Button(language.text("Skip", "건너뛰기"), action: onComplete)
+            Button(language.text("Skip", "건너뛰기"), action: engine.skip)
                 .font(.ppDisplay(15, weight: .semibold, language: language))
                 .foregroundStyle(Color.ppWarmGray)
                 .padding(.bottom, 16)
                 .accessibilityHint(language.text("Skips the tutorial", "튜토리얼을 건너뛰어요"))
 
-            stepDots
+            pageDots
                 .padding(.bottom, 24)
         }
         .ppScreenPadding()
-        .animation(.spring(response: 0.3, dampingFraction: 0.82), value: showFallbackButton)
+        .animation(.spring(response: 0.3, dampingFraction: 0.82), value: engine.showsFallbackButton)
+        .animation(.easeInOut(duration: 0.25), value: engine.pageIndex)
+        // A VoiceOver user activates the board (rather than flicking) and can't see the block
+        // slide off, so speak the result of each pop and announce a page swap as a screen change
+        // — mirroring the live game's announcement convention.
+        .onChange(of: engine.moveIndex) { _, newValue in
+            guard UIAccessibility.isVoiceOverRunning, newValue > 0 else { return }
+            let message = hintText.isEmpty ? language.text("Cleared!", "비웠어요!") : hintText
+            UIAccessibility.post(notification: .announcement, argument: message)
+        }
+        .onChange(of: engine.pageIndex) { _, _ in
+            guard UIAccessibility.isVoiceOverRunning else { return }
+            UIAccessibility.post(notification: .screenChanged, argument: localizedTitle)
+        }
         .onAppear {
-            // Drives the pointing-hand bob. The open-path highlight pulses itself inside
-            // the shared OpenPathCue modifier.
+            // Drives the pointing-hand bob. The open-path highlight pulses itself inside the
+            // shared OpenPathCue modifier.
             guard !reduceMotion else { return }
             withAnimation(.easeInOut(duration: 1.1).repeatForever(autoreverses: true)) {
-                pulse = true
+                handBob = true
             }
         }
     }
 
-    private var miniBoard: some View {
-        LazyVGrid(
-            columns: Array(repeating: GridItem(.fixed(52), spacing: 8), count: 4),
-            spacing: 8
-        ) {
-            tutorialCell(index: 0, arrow: "▲", color: .ppMistBlue)
-            tutorialCell(index: 1, arrow: nil, color: .ppMistBlue)
-            tutorialCell(index: 2, arrow: "▼", color: .ppLavenderMist)
-            tutorialCell(index: 3, arrow: "◀", color: .ppMistBlue)
-            tutorialCell(index: 4, arrow: nil, color: .ppMistBlue)
-            tutorialCell(index: 5, arrow: "▶", color: .ppFreshMint, foreground: .ppMintButtonText)
-            tutorialCell(index: 6, arrow: "▲", color: .ppLavenderMist)
-            tutorialCell(index: 7, arrow: "▶", color: .ppMistBlue)
+    @ViewBuilder
+    private var pageContent: some View {
+        if engine.currentStage != nil {
+            boardView
+        } else if let info = engine.currentInfo {
+            TutorialInfoCard(info: info)
         }
+    }
+
+    private var boardView: some View {
+        let rows = engine.board.count
+        let columns = TutorialContent.columns
+        let width = CGFloat(columns) * cellStride - cellSpacing
+        let height = CGFloat(rows) * cellStride - cellSpacing
+
+        return ZStack(alignment: .topLeading) {
+            ForEach(0..<rows, id: \.self) { row in
+                ForEach(0..<columns, id: \.self) { column in
+                    cellView(row: row, column: column)
+                        .offset(x: CGFloat(column) * cellStride, y: CGFloat(row) * cellStride)
+                }
+            }
+
+            ForEach(engine.popping) { pop in
+                TutorialPoppingBlock(direction: pop.direction, tone: pop.tone, reduceMotion: reduceMotion)
+                    .frame(width: cellSize, height: cellSize)
+                    .offset(x: CGFloat(pop.column) * cellStride, y: CGFloat(pop.row) * cellStride)
+                    .allowsHitTesting(false)
+            }
+        }
+        .frame(width: width, height: height, alignment: .topLeading)
+        .coordinateSpace(name: Self.boardSpace)
         .padding(11)
         .background(
             RoundedRectangle(cornerRadius: 22, style: .continuous)
@@ -935,150 +1257,256 @@ struct TutorialView: View {
                 .shadow(color: Color.ppMintText.opacity(0.1), radius: 8, x: 0, y: 2)
         )
         .contentShape(Rectangle())
-        // The taught gesture: only a flick matching the highlighted arrow advances (H4). It
-        // uses the same resolver as the live board so the tutorial can't teach a different
-        // flick than the game accepts.
+        // Uses the same flick resolver as the live board, so the tutorial can't teach a flick
+        // the real game would reject.
         .gesture(
-            DragGesture(minimumDistance: 0)
-                .onEnded(handleFlick)
+            DragGesture(minimumDistance: 0, coordinateSpace: .named(Self.boardSpace))
+                .onEnded { value in
+                    guard let start = cellPosition(at: value.startLocation),
+                          let direction = Direction.resolveFlick(
+                            translation: value.translation,
+                            predictedEndTranslation: value.predictedEndTranslation
+                          )
+                    else {
+                        return
+                    }
+                    engine.flick(at: start, direction: direction)
+                }
         )
-        // VoiceOver users can't flick, so the board is also an activate-able element.
+        // VoiceOver users can't flick, so the board is also an activate-able element that
+        // performs the next taught move.
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(language.text("Practice board", "연습 보드"))
-        .accessibilityHint(flickHint)
+        .accessibilityHint(hintText)
         .accessibilityAddTraits(.isButton)
-        .accessibilityAction { advance() }
+        .accessibilityAction { engine.performHintedMove() }
     }
 
     @ViewBuilder
-    private func tutorialCell(index: Int, arrow: String?, color: Color, foreground: Color = .ppInkGray) -> some View {
-        if let arrow {
-            ZStack(alignment: .bottomTrailing) {
-                MiniCell(arrow, color: color, foreground: foreground)
-                    .openPathCue(
-                        isOpen: index == config.highlightIndex,
-                        emphasized: true,
-                        reduceMotion: reduceMotion,
-                        cornerRadius: 13
-                    )
+    private func cellView(row: Int, column: Int) -> some View {
+        let pos = BoardPosition(row: row, column: column)
+        ZStack {
+            if let cell = engine.cell(row, column) {
+                TutorialMiniCell(
+                    direction: cell.direction,
+                    tone: cell.tone,
+                    rejected: engine.rejectedAt == pos
+                )
+                .openPathCue(isOpen: engine.isEscapable(pos), emphasized: true, reduceMotion: reduceMotion, cornerRadius: 13)
 
-                if index == config.highlightIndex {
+                if pos == engine.highlight, let direction = engine.expectedDirection {
                     Image(systemName: "hand.draw.fill")
-                        .font(.system(size: 26, weight: .semibold))
+                        .font(.system(size: 24, weight: .semibold))
                         .foregroundStyle(Color.ppInkGray)
                         .shadow(color: Color.ppInkGray.opacity(0.18), radius: 6, x: 0, y: 4)
-                        .offset(tutorialHandOffset(for: arrow))
+                        .offset(handOffset(for: direction))
+                        .allowsHitTesting(false)
                 }
-            }
-        } else {
-            MiniEmptyCell()
-        }
-    }
-
-    private func handleFlick(_ value: DragGesture.Value) {
-        guard let direction = Direction.resolveFlick(
-            translation: value.translation,
-            predictedEndTranslation: value.predictedEndTranslation
-        ) else {
-            return // a tap or too-diagonal drag: no-op, no penalty
-        }
-
-        if direction == config.expectedDirection {
-            advance()
-        } else {
-            tries += 1
-            withAnimation(.easeInOut(duration: 0.2)) { wrongFlick = true }
-            Task {
-                try? await Task.sleep(nanoseconds: 1_000_000_000)
-                withAnimation(.easeInOut(duration: 0.2)) { wrongFlick = false }
+            } else {
+                RoundedRectangle(cornerRadius: 13, style: .continuous)
+                    .fill(Color.ppInkGray.opacity(0.05))
             }
         }
+        .frame(width: cellSize, height: cellSize)
+        .animation(reduceMotion ? nil : .easeOut(duration: 0.2), value: engine.moveIndex)
     }
 
-    private func advance() {
-        wrongFlick = false
-        if isLastStep {
-            onComplete()
-        } else {
-            withAnimation(.spring(response: 0.32, dampingFraction: 0.8)) {
-                step += 1
-                tries = 0
-            }
+    private func cellPosition(at point: CGPoint) -> BoardPosition? {
+        guard cellStride > 0 else { return nil }
+        let columns = TutorialContent.columns
+        let rows = engine.board.count
+        // The gesture's hit area extends into the board's 11pt padding, which sits past the
+        // named coordinate space's origin — reject anything outside the actual grid bounds.
+        guard point.x >= 0, point.y >= 0,
+              point.x < CGFloat(columns) * cellStride,
+              point.y < CGFloat(rows) * cellStride
+        else {
+            return nil
+        }
+        let column = Int(point.x / cellStride)
+        let row = Int(point.y / cellStride)
+        // Reject the inter-cell gap (the spacing to the right of / below each cell) so a flick
+        // only ever resolves to a cell the player actually touched.
+        guard point.x - CGFloat(column) * cellStride < cellSize,
+              point.y - CGFloat(row) * cellStride < cellSize,
+              row < rows, column < columns
+        else {
+            return nil
+        }
+        return BoardPosition(row: row, column: column)
+    }
+
+    private func handOffset(for direction: Direction) -> CGSize {
+        let reach: CGFloat = (handBob && !reduceMotion) ? 17 : 9
+        switch direction {
+        case .up:
+            return CGSize(width: 9, height: 14 - reach)
+        case .down:
+            return CGSize(width: 9, height: 2 + reach)
+        case .left:
+            return CGSize(width: 14 - reach, height: 12)
+        case .right:
+            return CGSize(width: 2 + reach, height: 12)
         }
     }
 
-    private var localizedTitle: String { language.text(config.titleEN, config.titleKO) }
-    private var localizedSubtitle: String { language.text(config.subtitleEN, config.subtitleKO) }
-
-    private var flickHint: String {
-        let directionName = config.expectedDirection.accessibilityName(language: language)
-        if wrongFlick {
-            return language.text("Flick \(directionName) to clear it", "\(directionName) 방향으로 밀어요")
-        }
-        return language.text("Flick \(directionName)", "\(directionName)으로 밀어요")
+    private var localizedTitle: String {
+        if let stage = engine.currentStage { return language.text(stage.titleEN, stage.titleKO) }
+        if let info = engine.currentInfo { return language.text(info.titleEN, info.titleKO) }
+        return ""
     }
 
-    private var stepDots: some View {
+    private var localizedSubtitle: String {
+        if let stage = engine.currentStage { return language.text(stage.subtitleEN, stage.subtitleKO) }
+        if let info = engine.currentInfo { return language.text(info.subtitleEN, info.subtitleKO) }
+        return ""
+    }
+
+    private var hintText: String {
+        guard let direction = engine.expectedDirection else { return "" }
+        let name = direction.accessibilityName(language: language)
+        if engine.rejectedAt != nil {
+            return language.text("Flick \(name) on the glowing block", "빛나는 블록을 \(name)으로 밀어요")
+        }
+        if engine.currentStage?.teachesChain == true, engine.chain > 0 {
+            return language.text("Chain ×\(engine.chain) · flick \(name)", "체인 ×\(engine.chain) · \(name)으로 밀어요")
+        }
+        return language.text("Flick \(name)", "\(name)으로 밀어요")
+    }
+
+    private var pageDots: some View {
         HStack(spacing: 6) {
-            ForEach(0..<totalSteps, id: \.self) { index in
+            ForEach(0..<engine.pages.count, id: \.self) { index in
                 Capsule(style: .continuous)
-                    .fill(index <= currentStep ? Color.ppFreshMint : Color.ppInkGray.opacity(0.15))
-                    .frame(width: index == currentStep ? 22 : 6, height: 6)
+                    .fill(index <= engine.pageIndex ? Color.ppFreshMint : Color.ppInkGray.opacity(0.15))
+                    .frame(width: index == engine.pageIndex ? 22 : 6, height: 6)
             }
-        }
-    }
-
-    private func tutorialHandOffset(for arrow: String) -> CGSize {
-        let distance: CGFloat = pulse && !reduceMotion ? 18 : 10
-        switch arrow {
-        case "▲":
-            return CGSize(width: 10, height: 16 - distance)
-        case "▼":
-            return CGSize(width: 10, height: 4 + distance)
-        case "◀":
-            return CGSize(width: 16 - distance, height: 14)
-        default:
-            return CGSize(width: 4 + distance, height: 14)
         }
     }
 
     private var primaryButtonTitle: String {
-        isLastStep ? language.text("Start", "시작") : language.text("Next", "다음")
+        if engine.currentInfo != nil {
+            return engine.isLastPage ? language.text("Start", "시작") : language.text("Next", "다음")
+        }
+        return language.text("Show me", "보여주기")
     }
 
     private var primaryButtonIcon: String {
-        isLastStep ? "play.fill" : "arrow.right"
+        if engine.currentInfo != nil {
+            return engine.isLastPage ? "play.fill" : "arrow.right"
+        }
+        return "hand.draw.fill"
     }
 }
 
-private struct MiniCell: View {
-    let arrow: String
-    let color: Color
-    let foreground: Color
-
-    init(_ arrow: String, color: Color, foreground: Color = .ppInkGray) {
-        self.arrow = arrow
-        self.color = color
-        self.foreground = foreground
-    }
+private struct TutorialMiniCell: View {
+    let direction: Direction
+    let tone: BlockTone
+    let rejected: Bool
 
     var body: some View {
-        ArrowGlyph(arrow: arrow, size: 18)
-            .foregroundStyle(foreground)
+        ArrowGlyph(arrow: direction.arrow, size: 18)
+            .foregroundStyle(Color.ppInkGray)
             .frame(width: 52, height: 52)
             .background(
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .fill(color)
+                RoundedRectangle(cornerRadius: 13, style: .continuous)
+                    .fill(tone.tutorialColor)
                     .shadow(color: Color.ppInkGray.opacity(0.12), radius: 8, x: 0, y: 4)
             )
+            .overlay {
+                if rejected {
+                    RoundedRectangle(cornerRadius: 13, style: .continuous)
+                        .stroke(Color.ppSoftCoral, lineWidth: 2.5)
+                }
+            }
+            .scaleEffect(rejected ? 0.94 : 1)
+            .animation(.easeInOut(duration: 0.18), value: rejected)
     }
 }
 
-private struct MiniEmptyCell: View {
+/// The block sliding off the edge after a correct flick — the visible "it popped" feedback the
+/// old static tutorial was missing.
+private struct TutorialPoppingBlock: View {
+    let direction: Direction
+    let tone: BlockTone
+    let reduceMotion: Bool
+    @State private var progress: CGFloat = 0
+
     var body: some View {
-        RoundedRectangle(cornerRadius: 12, style: .continuous)
-            .fill(Color.ppInkGray.opacity(0.035))
+        ArrowGlyph(arrow: direction.arrow, size: 18)
+            .foregroundStyle(Color.ppInkGray)
             .frame(width: 52, height: 52)
+            .background(
+                RoundedRectangle(cornerRadius: 13, style: .continuous)
+                    .fill(tone.tutorialColor)
+                    .shadow(color: Color.ppInkGray.opacity(0.12), radius: 8, x: 0, y: 4)
+            )
+            .scaleEffect(reduceMotion ? 1 : 1 - 0.22 * progress)
+            .opacity(1 - Double(progress))
+            .offset(slideOffset)
+            .onAppear {
+                withAnimation(.easeOut(duration: reduceMotion ? 0.2 : 0.32)) { progress = 1 }
+            }
+    }
+
+    private var slideOffset: CGSize {
+        guard !reduceMotion else { return .zero }
+        let step = direction.delta
+        let distance: CGFloat = 34 * progress
+        return CGSize(width: CGFloat(step.column) * distance, height: CGFloat(step.row) * distance)
+    }
+}
+
+private struct TutorialInfoCard: View {
+    @Environment(\.appLanguage) private var language
+    let info: TutorialInfo
+
+    var body: some View {
+        VStack(spacing: 9) {
+            ForEach(Array(info.items.enumerated()), id: \.offset) { _, item in
+                HStack(spacing: 12) {
+                    Image(systemName: item.systemImage)
+                        .font(.system(size: 16, weight: .bold, design: .rounded))
+                        .foregroundStyle(Color.ppMintButtonText)
+                        .frame(width: 34, height: 34)
+                        .background(Circle().fill(Color.ppFreshMint))
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(language.text(item.titleEN, item.titleKO))
+                            .font(.ppDisplay(15, weight: .semibold, language: language))
+                            .foregroundStyle(Color.ppInkGray)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.8)
+                        Text(language.text(item.detailEN, item.detailKO))
+                            .font(.ppBody(12, weight: .medium, language: language))
+                            .foregroundStyle(Color.ppWarmGray)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+
+                    Spacer(minLength: 6)
+                }
+                .padding(.horizontal, 13)
+                .padding(.vertical, 9)
+                .frame(maxWidth: .infinity)
+                .background(RoundedRectangle(cornerRadius: 15, style: .continuous).fill(Color.ppCardCream))
+            }
+        }
+        .padding(13)
+        .frame(maxWidth: 340)
+        .background(
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                .fill(Color.ppSoftSage)
+                .shadow(color: Color.ppMintText.opacity(0.1), radius: 8, x: 0, y: 2)
+        )
+    }
+}
+
+private extension BlockTone {
+    var tutorialColor: Color {
+        switch self {
+        case .mistBlue: .ppMistBlue
+        case .lavenderMist: .ppLavenderMist
+        }
     }
 }
 
@@ -1137,8 +1565,11 @@ struct SettingsView: View {
                         isOn: $hapticsEnabled
                     )
                     SettingRow(
-                        title: appLanguage.text("Open-Path Highlight", "열린 길 강조"),
-                        subtitle: appLanguage.text("Brighten and pulse open paths", "열린 길을 더 밝게 강조해요"),
+                        title: appLanguage.text("Practice Mode", "연습 모드"),
+                        subtitle: appLanguage.text(
+                            "Highlight open paths — practice runs aren't recorded",
+                            "열린 길을 표시해요 — 연습 판은 기록되지 않아요"
+                        ),
                         isOn: $colorAssist
                     )
                     SettingRow(

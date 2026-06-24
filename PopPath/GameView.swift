@@ -32,6 +32,7 @@ struct GameView: View {
                 floatingScores: game.floatingScores,
                 boardToast: game.boardToast,
                 boardGeneration: game.boardGeneration,
+                boardModifier: game.currentModifier,
                 colorAssist: colorAssist,
                 reduceMotion: reduceMotion,
                 onFlick: { row, column, direction in
@@ -80,7 +81,10 @@ struct GameView: View {
             }
             Button(language.text("Keep playing", "계속하기"), role: .cancel) { }
         } message: {
-            Text(language.text("Your score so far will be saved.", "지금까지 점수는 저장돼요."))
+            // A practice run records nothing, so don't promise to save the score (it isn't).
+            Text(game.isPractice
+                ? language.text("Practice run — nothing is recorded.", "연습 판이라 기록되지 않아요.")
+                : language.text("Your score so far will be saved.", "지금까지 점수는 저장돼요."))
         }
         .confirmationDialog(
             language.text("Restart today's challenge?", "오늘의 도전을 다시 할까요?"),
@@ -89,6 +93,10 @@ struct GameView: View {
         ) {
             Button(language.text("Restart", "다시 시작"), role: .destructive) {
                 game.newRound(mode: .daily)
+                // newRound clears the practice latch, so re-derive it from the current toggle —
+                // otherwise restarting today's Daily with the highlight still on would credit a
+                // hinted run and consume the one daily attempt.
+                game.setPracticeAssist(colorAssist)
             }
             Button(language.text("Keep playing", "계속하기"), role: .cancel) { }
         } message: {
@@ -105,6 +113,11 @@ struct GameView: View {
         }
         .onAppear {
             game.configureFeedback(soundEnabled: soundEnabled, hapticsEnabled: hapticsEnabled)
+            game.setPracticeAssist(colorAssist)
+        }
+        // Flipping the highlight on mid-run (paused overlay) latches the run into Practice Mode.
+        .onChange(of: colorAssist) { _, _ in
+            game.setPracticeAssist(colorAssist)
         }
         .onChange(of: soundEnabled) { _, _ in
             game.configureFeedback(soundEnabled: soundEnabled, hapticsEnabled: hapticsEnabled)
@@ -117,6 +130,13 @@ struct GameView: View {
         .onChange(of: game.boardToast?.id) { _, _ in
             guard UIAccessibility.isVoiceOverRunning, let toast = game.boardToast else { return }
             UIAccessibility.post(notification: .announcement, argument: toast.announcement(language: language))
+        }
+        // Speak a board's variety modifier on every deal (keyed on boardGeneration, not the
+        // modifier value, so two consecutive boards rolling the SAME modifier still announce),
+        // so a VoiceOver player knows a Rush / Bonus board arrived — the banner is purely visual.
+        .onChange(of: game.boardGeneration) { _, _ in
+            guard UIAccessibility.isVoiceOverRunning, game.currentModifier != .none else { return }
+            UIAccessibility.post(notification: .announcement, argument: game.currentModifier.announcement(language: language))
         }
     }
 
@@ -140,6 +160,19 @@ struct GameView: View {
         .accessibilityLabel(language.text("Difficulty level \(level + 1) of 5", "난이도 \(level + 1) / 5"))
     }
 
+    // Surfaced whenever the run is in Practice Mode (Open-Path Highlight on) so the player knows
+    // this run won't be recorded.
+    private var practiceBadge: some View {
+        Text(language.text("PRACTICE", "연습"))
+            .font(.ppBody(9, weight: .heavy, language: language))
+            .tracking(language == .korean ? 0 : 0.8)
+            .foregroundStyle(Color.ppMintButtonText)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 2)
+            .background(Capsule(style: .continuous).fill(Color.ppFreshMint))
+            .accessibilityLabel(language.text("Practice Mode, this run won't be recorded", "연습 모드, 이 판은 기록되지 않아요"))
+    }
+
     private var topBar: some View {
         HStack(spacing: 10) {
             Button(action: requestExit) {
@@ -160,7 +193,12 @@ struct GameView: View {
 
             Spacer()
 
-            difficultyPip
+            VStack(spacing: 3) {
+                difficultyPip
+                if game.isPractice {
+                    practiceBadge
+                }
+            }
 
             Spacer()
 
@@ -281,7 +319,7 @@ private struct PausedOverlay: View {
                 VStack(spacing: 10) {
                     PausedToggle(label: language.text("Sound", "사운드"), systemImage: "speaker.wave.2.fill", isOn: $soundEnabled)
                     PausedToggle(label: language.text("Haptics", "진동"), systemImage: "iphone.radiowaves.left.and.right", isOn: $hapticsEnabled)
-                    PausedToggle(label: language.text("Open-Path Highlight", "열린 길 강조"), systemImage: "sparkles", isOn: $colorAssist)
+                    PausedToggle(label: language.text("Practice Mode", "연습 모드"), systemImage: "graduationcap.fill", isOn: $colorAssist)
                 }
                 .padding(.bottom, 6)
 
@@ -548,12 +586,15 @@ private struct HUDTile: View {
 }
 
 private struct BoardView: View {
+    @Environment(\.appLanguage) private var language
+
     let board: [[PopBlock?]]
     let openPositions: Set<BoardPosition>
     let escapingBlocks: [EscapingBlock]
     let floatingScores: [FloatingScore]
     let boardToast: BoardToast?
     let boardGeneration: Int
+    let boardModifier: BoardModifier
     let colorAssist: Bool
     let reduceMotion: Bool
     let onFlick: (Int, Int, Direction) -> Void
@@ -590,9 +631,16 @@ private struct BoardView: View {
                                 showOpenHint: colorAssist,
                                 reduceMotion: reduceMotion,
                                 onAccessibilityPop: {
-                                    if let block = board[row][column] {
-                                        onFlick(row, column, block.direction)
-                                    }
+                                    guard let block = board[row][column] else { return }
+                                    // A wild block pops in any open lane, so activate it along a
+                                    // direction that actually has a clear runway (its arrow is
+                                    // only a hint and may be blocked).
+                                    let direction = block.kind == .wild
+                                        ? (Direction.allCases.first {
+                                            GameRules.hasClearRunway(on: board, row: row, column: column, direction: $0)
+                                        } ?? block.direction)
+                                        : block.direction
+                                    onFlick(row, column, direction)
                                 }
                             )
                         }
@@ -641,6 +689,25 @@ private struct BoardView: View {
                         .fill(Color.ppSoftSage)
                         .shadow(color: Color.ppMintText.opacity(0.1), radius: 8, x: 0, y: 2)
                 )
+                // A special board reads via a colored border + corner chip — no wash over the
+                // cells, so the arrows stay legible.
+                .overlay {
+                    if let color = modifierColor {
+                        RoundedRectangle(cornerRadius: 24, style: .continuous)
+                            .stroke(color, lineWidth: 3)
+                            .allowsHitTesting(false)
+                    }
+                }
+                // Pinned to the bottom-leading corner — out of the top band where the centered
+                // board toast lives, so the two never overlap.
+                .overlay(alignment: .bottomLeading) {
+                    if boardModifier != .none {
+                        modifierChip
+                            .padding(11)
+                            .transition(reduceMotion ? .opacity : .scale(scale: 0.9).combined(with: .opacity))
+                    }
+                }
+                .animation(reduceMotion ? nil : .spring(response: 0.3, dampingFraction: 0.8), value: boardModifier)
                 .overlay(alignment: .top) {
                     if let boardToast {
                         BoardToastView(toast: boardToast)
@@ -696,6 +763,30 @@ private struct BoardView: View {
             translation: value.translation,
             predictedEndTranslation: value.predictedEndTranslation
         )
+    }
+
+    private var modifierColor: Color? {
+        switch boardModifier {
+        case .none: return nil
+        case .rush: return Color.ppSoftCoral
+        case .bonus: return Color.ppMintText
+        }
+    }
+
+    private var modifierChip: some View {
+        HStack(spacing: 5) {
+            Image(systemName: boardModifier == .rush ? "bolt.fill" : "gift.fill")
+                .font(.system(size: 11, weight: .black, design: .rounded))
+            Text(boardModifier.label(language: language))
+                .font(.ppBody(11, weight: .heavy, language: language))
+                .tracking(language == .korean ? 0 : 0.6)
+        }
+        .foregroundStyle(Color.ppMintButtonText)
+        .padding(.horizontal, 9)
+        .padding(.vertical, 4)
+        .background(Capsule(style: .continuous).fill(boardModifier == .rush ? Color.ppSoftCoral : Color.ppFreshMint))
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(boardModifier.announcement(language: language))
     }
 }
 
@@ -978,11 +1069,14 @@ private struct BoardCell: View {
                 .overlay {
                     BlockToneMotif(tone: block.tone)
                 }
+                .overlay {
+                    specialFrame(for: block)
+                }
 
-            Image(systemName: block.direction.symbolName)
-                .font(.system(size: 18, weight: .bold, design: .rounded))
-                .symbolRenderingMode(.monochrome)
-                .foregroundStyle(Color.ppInkGray)
+            blockGlyph(for: block)
+        }
+        .overlay(alignment: .topLeading) {
+            specialBadge(for: block)
         }
         .openPathCue(isOpen: isOpen, emphasized: showOpenHint, reduceMotion: reduceMotion, cornerRadius: 12)
         .overlay {
@@ -995,25 +1089,88 @@ private struct BoardCell: View {
         .animation(.linear(duration: 0.18), value: block.isMiss)
     }
 
+    @ViewBuilder
+    private func blockGlyph(for block: PopBlock) -> some View {
+        if block.kind == .wild {
+            // Wild pops in any open direction — a four-way glyph, not a single arrow.
+            Image(systemName: "arrow.up.and.down.and.arrow.left.and.right")
+                .font(.system(size: 16, weight: .bold, design: .rounded))
+                .foregroundStyle(Color.ppInkGray)
+        } else {
+            Image(systemName: block.direction.symbolName)
+                .font(.system(size: 18, weight: .bold, design: .rounded))
+                .symbolRenderingMode(.monochrome)
+                .foregroundStyle(Color.ppInkGray)
+        }
+    }
+
+    /// A shape-based frame per special kind, each visually distinct from the others AND from the
+    /// two color-coded cell states it can co-occur with — the solid pulsing mint open-path cue
+    /// and the solid coral miss stroke. Bomb = dashed steel ring; armored = solid steel ring
+    /// (always steel, never coral, so a crack can't read as a miss — the badge marks the crack);
+    /// wild = dashed mint ring (dashed, so it stays distinct from the solid open-path cue).
+    @ViewBuilder
+    private func specialFrame(for block: PopBlock) -> some View {
+        switch block.kind {
+        case .bomb:
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .strokeBorder(Color.ppInkGray.opacity(0.38), style: StrokeStyle(lineWidth: 2, dash: [4, 3]))
+        case .armored:
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .strokeBorder(Color.ppInkGray.opacity(0.5), lineWidth: 2.5)
+        case .wild:
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .strokeBorder(Color.ppFreshMint.opacity(0.95), style: StrokeStyle(lineWidth: 2, dash: [3, 2.5]))
+        case .normal:
+            EmptyView()
+        }
+    }
+
+    @ViewBuilder
+    private func specialBadge(for block: PopBlock) -> some View {
+        if let symbol = badgeSymbol(for: block) {
+            Image(systemName: symbol)
+                .font(.system(size: 9, weight: .black, design: .rounded))
+                .foregroundStyle(Color.ppInkGray.opacity(0.9))
+                .padding(2)
+                .background(Circle().fill(Color.ppCardCream.opacity(0.92)))
+                .padding(3)
+        }
+    }
+
+    private func badgeSymbol(for block: PopBlock) -> String? {
+        switch block.kind {
+        case .normal: return nil
+        case .bomb: return "burst.fill"
+        case .armored: return block.armor > 0 ? "shield.fill" : "shield.lefthalf.filled"
+        case .wild: return "sparkles"
+        }
+    }
+
     private var pressScale: CGFloat {
         guard isPressed, block != nil, !reduceMotion else { return 1 }
         return 0.94
     }
 
     private func accessibilityLabel(for block: PopBlock) -> String {
+        // A button when open; VoiceOver appends "double-tap to activate", which fires the pop.
+        let state = isOpen ? language.text("open path", "열린 길") : language.text("blocked", "막힌 길")
         let directionName = block.direction.accessibilityName(language: language)
-        if isOpen {
-            // A button; VoiceOver appends "double-tap to activate", which fires the pop.
-            return language.text(
-                "\(directionName) arrow, open path",
-                "\(directionName) 화살표, 열린 길"
-            )
-        }
 
-        return language.text(
-            "\(directionName) arrow, blocked",
-            "\(directionName) 화살표, 막힌 길"
-        )
+        switch block.kind {
+        case .normal:
+            return language.text("\(directionName) arrow, \(state)", "\(directionName) 화살표, \(state)")
+        case .bomb:
+            return language.text("Bomb, \(directionName) arrow, \(state)", "폭탄, \(directionName) 화살표, \(state)")
+        case .armored:
+            let armorState = block.armor > 0
+                ? language.text("Armored", "단단한")
+                : language.text("Cracked", "금 간")
+            return language.text("\(armorState) \(directionName) arrow, \(state)", "\(armorState) \(directionName) 화살표, \(state)")
+        case .wild:
+            // Wild has no single required direction.
+            return language.text("Wild block, \(state)", "만능 블록, \(state)")
+        }
     }
 }
 

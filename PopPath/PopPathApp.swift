@@ -33,10 +33,11 @@ struct RootView: View {
     @AppStorage("hasSeenTutorial") private var hasSeenTutorial = false
     @AppStorage("soundEnabled") private var soundEnabled = true
     @AppStorage("hapticsEnabled") private var hapticsEnabled = true
-    // Defaults on so a fresh install distinguishes open from blocked out of the box; the
-    // open cue itself is now always drawn, so this only controls the brighter pulse. The
-    // storage key is unchanged, so anyone who turned it off keeps their choice.
-    @AppStorage("colorAssist") private var colorAssist = true
+    // Off by default: the open-path sparkle is now a learning aid, not a default crutch. When
+    // ON it is the *only* thing that draws the open cue AND it flips the run into Practice Mode
+    // (no records). The storage key is unchanged, so anyone who already turned it on keeps it —
+    // they'll just now be practicing. See GameModel.isPractice.
+    @AppStorage("colorAssist") private var colorAssist = false
     @AppStorage("reduceMotion") private var reduceMotion = false
     @AppStorage("dailyReminderEnabled") private var dailyReminderEnabled = false
     @AppStorage("appLanguage") private var appLanguageRaw = AppLanguage.english.rawValue
@@ -180,10 +181,12 @@ struct RootView: View {
             )
         case .result:
             let goHome = { withAnimation(.spring(response: 0.38, dampingFraction: 0.86)) { route = .home } }
+            let summary = game.roundSummary ?? fallbackSummary
             ResultView(
-                summary: game.roundSummary ?? fallbackSummary,
-                // A one-shot Daily can't be replayed today — Retry returns Home instead (K13).
-                canRetry: (game.roundSummary?.mode ?? game.mode) != .daily,
+                summary: summary,
+                // A one-shot Daily can't be replayed today — Retry returns Home instead (K13) —
+                // but a *practice* Daily was never consumed, so it can always be retried.
+                canRetry: summary.mode != .daily || summary.isPractice,
                 onRetry: { startGame(mode: game.roundSummary?.mode ?? game.mode) },
                 onHome: goHome
             )
@@ -242,6 +245,9 @@ struct RootView: View {
 
     private func startGame(mode: GameMode = .classic) {
         game.newRound(mode: mode)
+        // Latch Practice Mode from the highlight setting at round start; GameView keeps it in
+        // sync if the toggle is flipped mid-run from the paused overlay.
+        game.setPracticeAssist(colorAssist)
         withAnimation(.spring(response: 0.38, dampingFraction: 0.86)) {
             route = .game
         }
