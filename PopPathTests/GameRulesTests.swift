@@ -1018,6 +1018,43 @@ final class GameRulesTests: XCTestCase {
         }
     }
 
+    func testTutorialIntroPreviewsRealBlockFaces() {
+        // The intro rows must preview the ACTUAL block faces (not generic SF Symbols), so a player
+        // recognizes them in-game: each special item carries a `faceKind` driving a real BlockFace.
+        let items = TutorialContent.pages.compactMap { page -> TutorialInfo? in
+            if case let .info(info) = page { return info }
+            return nil
+        }.flatMap { $0.items }
+
+        func item(_ needle: String) -> TutorialInfoItem? {
+            items.first { $0.titleEN.lowercased().contains(needle) }
+        }
+
+        XCTAssertEqual(item("bomb")?.faceKind, GuideFaceKind.block(.bomb, cracked: false))
+        XCTAssertEqual(item("armored")?.faceKind, GuideFaceKind.block(.armored, cracked: false))
+        XCTAssertEqual(item("wild")?.faceKind, GuideFaceKind.block(.wild, cracked: false))
+        XCTAssertEqual(item("rush")?.faceKind, GuideFaceKind.modifier(.rush))
+    }
+
+    func testBlockGuideCoversEveryBlockKindAndBoardModifier() {
+        // The home guide must explain every special kind and both board modifiers, each with
+        // non-empty copy in both languages, so nothing the generator can produce goes unexplained.
+        let faces = BlockGuideEntry.all.map { $0.face }
+        XCTAssertTrue(faces.contains(.block(.normal, cracked: false)))
+        XCTAssertTrue(faces.contains(.block(.bomb, cracked: false)))
+        XCTAssertTrue(faces.contains(.block(.armored, cracked: false)))
+        XCTAssertTrue(faces.contains(.block(.wild, cracked: false)))
+        XCTAssertTrue(faces.contains(.modifier(.rush)))
+        XCTAssertTrue(faces.contains(.modifier(.bonus)))
+
+        for entry in BlockGuideEntry.all {
+            XCTAssertFalse(entry.titleEN.isEmpty, "\(entry.id) needs an English name")
+            XCTAssertFalse(entry.titleKO.isEmpty, "\(entry.id) needs a Korean name")
+            XCTAssertFalse(entry.detailEN.isEmpty, "\(entry.id) needs an English ability line")
+            XCTAssertFalse(entry.detailKO.isEmpty, "\(entry.id) needs a Korean ability line")
+        }
+    }
+
     // MARK: - Sprint 7: retention, meta & navigation
 
     func testPlayerStatsDecodesPartialJSONWithDefaults() {

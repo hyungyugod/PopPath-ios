@@ -68,6 +68,16 @@ extension Color {
     static let ppWarmGray = Color(hex: 0x5C6469)
     static let ppMintText = Color(hex: 0x3F7A5E)
     static let ppMintButtonText = Color(hex: 0x23413A)
+
+    // Special-block fills — added so bomb / armored / wild read at a glance, not just via a
+    // tiny badge. Each is light enough to keep the dark ink arrow at AAA contrast, hue-distinct
+    // from the two normal tones, and deliberately *off* the reserved mint (open-path cue) and
+    // coral (miss stroke) colors so a persistent special fill can never be mistaken for either.
+    static let ppBombBlush = Color(hex: 0xF6D9C4)    // bomb — warm peach-sand
+    static let ppArmorSteel = Color(hex: 0xCED9DE)   // armored, intact — cool plated steel
+    static let ppArmorCrack = Color(hex: 0xE3E8EA)   // armored, cracked — paler "drained" steel
+    static let ppWildButter = Color(hex: 0xF1E6B8)   // wild — soft butter-gold (well off mint)
+    static let ppSpecialRing = Color(hex: 0x6E5A4E)  // cocoa-taupe ink for special frames/badges
 }
 
 extension Font {
@@ -452,6 +462,274 @@ struct BlockToneMotif: View {
             RoundedRectangle(cornerRadius: 1, style: .continuous)
                 .frame(width: 6, height: 6)
                 .rotationEffect(.degrees(45))
+        }
+    }
+}
+
+extension BlockTone {
+    /// The cell fill for a normal block of this tone — the single source of truth shared by the
+    /// board cell, the escaping-pop animation, the home block guide, and the tutorial card.
+    var fillColor: Color {
+        switch self {
+        case .mistBlue: return .ppMistBlue
+        case .lavenderMist: return .ppLavenderMist
+        }
+    }
+}
+
+/// A small static zig-zag drawn behind the arrow on a cracked armored block — a literal,
+/// motion-free "the shell broke" cue (so it survives reduce-motion and grayscale).
+private struct CrackMark: Shape {
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        path.move(to: CGPoint(x: rect.midX, y: rect.minY))
+        path.addLine(to: CGPoint(x: rect.minX + rect.width * 0.18, y: rect.midY))
+        path.addLine(to: CGPoint(x: rect.maxX - rect.width * 0.12, y: rect.midY + rect.height * 0.06))
+        path.addLine(to: CGPoint(x: rect.minX + rect.width * 0.34, y: rect.maxY))
+        return path
+    }
+}
+
+/// The intrinsic face of a block — fill, tone motif, special frame, centered glyph, and corner
+/// emblem — rendered identically wherever a block is shown: the live board cell, the home block
+/// guide, and the tutorial intro card. It carries NO run-state (no press scale, open-path cue,
+/// miss stroke, or accessibility); the board cell layers those on top. Keeping the face here is
+/// what stops the three surfaces from drifting apart. Every inner metric scales from `side`, so
+/// the board (≈cell size), the guide (44), and the tutorial (38) all render from one code path.
+struct BlockFace: View {
+    let kind: BlockKind
+    var tone: BlockTone = .mistBlue
+    var direction: Direction = .right
+    /// Armored only: the shell has been cracked (one flick left). Ignored for other kinds.
+    var isCracked: Bool = false
+    var side: CGFloat = 48
+
+    init(
+        kind: BlockKind,
+        tone: BlockTone = .mistBlue,
+        direction: Direction = .right,
+        isCracked: Bool = false,
+        side: CGFloat = 48
+    ) {
+        self.kind = kind
+        self.tone = tone
+        self.direction = direction
+        self.isCracked = isCracked
+        self.side = side
+    }
+
+    /// Build a face straight from a model block (maps armored `armor == 0` to the cracked face).
+    init(_ block: PopBlock, side: CGFloat = 48) {
+        self.init(
+            kind: block.kind,
+            tone: block.tone,
+            direction: block.direction,
+            isCracked: block.kind == .armored && block.armor == 0,
+            side: side
+        )
+    }
+
+    private var scale: CGFloat { side / 48 }
+    private var cornerRadius: CGFloat { 12 * scale }
+
+    var body: some View {
+        let shape = RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+        return ZStack {
+            shape
+                .fill(BlockFace.fillColor(kind: kind, tone: tone, isCracked: isCracked))
+                .shadow(color: Color.ppInkGray.opacity(0.13), radius: 9 * scale, x: 0, y: 4 * scale)
+                .overlay(alignment: .top) {
+                    shape
+                        .fill(.white.opacity(0.45))
+                        .frame(height: 1)
+                        .padding(.horizontal, 10 * scale)
+                }
+
+            // The decorative tone motif is a normal-block-only cue; specials carry their own
+            // detailing, so it's suppressed there to keep them clean.
+            if kind == .normal {
+                BlockToneMotif(tone: tone)
+            }
+
+            if kind == .armored, isCracked {
+                CrackMark()
+                    .stroke(
+                        Color.ppSpecialRing.opacity(0.35),
+                        style: StrokeStyle(lineWidth: 1.5 * scale, lineCap: .round, lineJoin: .round)
+                    )
+                    .frame(width: side * 0.4, height: side * 0.5)
+                    .offset(x: side * 0.1, y: -side * 0.02)
+                    .allowsHitTesting(false)
+            }
+
+            specialFrame(shape)
+
+            glyph
+        }
+        .frame(width: side, height: side)
+        .overlay(alignment: .topLeading) { badge }
+    }
+
+    @ViewBuilder
+    private var glyph: some View {
+        if kind == .wild {
+            // Wild pops in any open direction — a four-way glyph, not a single arrow.
+            Image(systemName: "arrow.up.and.down.and.arrow.left.and.right")
+                .font(.system(size: 16 * scale, weight: .bold, design: .rounded))
+                .foregroundStyle(Color.ppInkGray)
+        } else {
+            ArrowGlyph(arrow: direction.arrow, size: 18 * scale)
+                .foregroundStyle(Color.ppInkGray)
+        }
+    }
+
+    /// A shape-based frame per special kind, each distinct from the others AND from the two
+    /// run-state strokes the board layers on top (the solid pulsing mint open-path cue and the
+    /// solid coral miss stroke). Bomb = warm dashed ring; armored intact = heavy solid plate;
+    /// armored cracked = thin broken ring; wild = fine dark dotted ring (off mint, which the
+    /// open-path cue owns — wild sits on already-open cells where that cue overlays it).
+    @ViewBuilder
+    private func specialFrame(_ shape: RoundedRectangle) -> some View {
+        switch kind {
+        case .bomb:
+            shape.strokeBorder(
+                Color.ppSpecialRing.opacity(0.55),
+                style: StrokeStyle(lineWidth: 2.5 * scale, dash: [4 * scale, 3 * scale])
+            )
+        case .armored:
+            if isCracked {
+                shape.strokeBorder(
+                    Color.ppSpecialRing.opacity(0.5),
+                    style: StrokeStyle(lineWidth: 1.5 * scale, dash: [3 * scale, 3 * scale])
+                )
+            } else {
+                shape.strokeBorder(Color.ppSpecialRing.opacity(0.6), lineWidth: 3 * scale)
+            }
+        case .wild:
+            shape.strokeBorder(
+                Color.ppInkGray.opacity(0.4),
+                style: StrokeStyle(lineWidth: 1.5 * scale, lineCap: .round, dash: [1.5 * scale, 3 * scale])
+            )
+        case .normal:
+            EmptyView()
+        }
+    }
+
+    @ViewBuilder
+    private var badge: some View {
+        if let symbol = badgeSymbol {
+            Image(systemName: symbol)
+                .font(.system(size: 10 * scale, weight: .black, design: .rounded))
+                .foregroundStyle(badgeGlyphColor)
+                .frame(width: 18 * scale, height: 18 * scale)
+                .background(
+                    Circle()
+                        .fill(Color.ppCardCream)
+                        .overlay(Circle().strokeBorder(badgeKeyline, lineWidth: 0.75 * scale))
+                )
+                .padding(3 * scale)
+        }
+    }
+
+    private var badgeSymbol: String? {
+        switch kind {
+        case .normal: return nil
+        case .bomb: return "burst.fill"
+        case .armored: return isCracked ? "shield.lefthalf.filled" : "shield.fill"
+        case .wild: return "sparkles"
+        }
+    }
+
+    private var badgeGlyphColor: Color {
+        kind == .wild ? .ppMintText : .ppSpecialRing
+    }
+
+    private var badgeKeyline: Color {
+        if kind == .wild { return Color.ppMintText.opacity(0.5) }
+        if kind == .armored, isCracked { return Color.ppSpecialRing.opacity(0.4) }
+        return Color.ppSpecialRing.opacity(0.75)
+    }
+
+    /// The fill for any block — the single mapping used by the board, the escaping-pop animation,
+    /// the guide, and the tutorial, so a kind's color is defined exactly once.
+    static func fillColor(kind: BlockKind, tone: BlockTone, isCracked: Bool) -> Color {
+        switch kind {
+        case .normal: return tone.fillColor
+        case .bomb: return .ppBombBlush
+        case .armored: return isCracked ? .ppArmorCrack : .ppArmorSteel
+        case .wild: return .ppWildButter
+        }
+    }
+
+    static func fillColor(for block: PopBlock) -> Color {
+        fillColor(
+            kind: block.kind,
+            tone: block.tone,
+            isCracked: block.kind == .armored && block.armor == 0
+        )
+    }
+}
+
+/// A board-modifier emblem (Rush / Bonus) shown in the block guide and tutorial card. Modifiers
+/// are board states, not blocks, so they get a distinct treatment — the reserved coral / mint
+/// border from the live board banner, not a `BlockFace` tint — visually teaching "these are
+/// boards, not blocks."
+struct ModifierChip: View {
+    let modifier: BoardModifier
+    var side: CGFloat = 44
+
+    var body: some View {
+        let scale = side / 44
+        RoundedRectangle(cornerRadius: 12 * scale, style: .continuous)
+            .fill(Color.ppCardCream)
+            .overlay(
+                RoundedRectangle(cornerRadius: 12 * scale, style: .continuous)
+                    .strokeBorder(borderColor, lineWidth: 2 * scale)
+            )
+            .overlay {
+                Image(systemName: symbol)
+                    .font(.system(size: 18 * scale, weight: .black, design: .rounded))
+                    .foregroundStyle(Color.ppInkGray)
+            }
+            .frame(width: side, height: side)
+    }
+
+    private var borderColor: Color {
+        switch modifier {
+        case .rush: return .ppSoftCoral
+        case .bonus, .none: return .ppFreshMint
+        }
+    }
+
+    private var symbol: String {
+        switch modifier {
+        case .rush: return "bolt.fill"
+        case .bonus, .none: return "gift.fill"
+        }
+    }
+}
+
+/// What a guide / tutorial row previews: a real block face or a board modifier. Shared by the
+/// home block guide and the tutorial intro card so both preview blocks exactly as the board does.
+enum GuideFaceKind: Equatable {
+    case block(BlockKind, cracked: Bool)
+    case modifier(BoardModifier)
+}
+
+/// Renders a `GuideFaceKind` at a given size — a `BlockFace` for blocks, a `ModifierChip` for
+/// board modifiers.
+struct GuideFace: View {
+    let kind: GuideFaceKind
+    var direction: Direction = .right
+    var tone: BlockTone = .mistBlue
+    var side: CGFloat = 44
+
+    var body: some View {
+        switch kind {
+        case let .block(blockKind, cracked):
+            BlockFace(kind: blockKind, tone: tone, direction: direction, isCracked: cracked, side: side)
+        case let .modifier(modifier):
+            ModifierChip(modifier: modifier, side: side)
         }
     }
 }

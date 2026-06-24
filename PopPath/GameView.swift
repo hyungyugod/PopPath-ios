@@ -626,6 +626,7 @@ private struct BoardView: View {
 
                             BoardCell(
                                 block: board[row][column],
+                                side: cellSize,
                                 isOpen: openPositions.contains(position),
                                 isPressed: pressedCell == position,
                                 showOpenHint: colorAssist,
@@ -826,7 +827,7 @@ private struct EscapingBlockView: View {
             }
 
             RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(escapingBlock.block.tone.color)
+                .fill(BlockFace.fillColor(for: escapingBlock.block))
                 .overlay {
                     RoundedRectangle(cornerRadius: 12, style: .continuous)
                         .fill(Color.white.opacity(flashOpacity(visibleProgress)))
@@ -1020,6 +1021,9 @@ private struct BoardCell: View {
     @Environment(\.appLanguage) private var language
 
     let block: PopBlock?
+    /// The cell's side length, used to size the shared `BlockFace` so the board, the home guide,
+    /// and the tutorial all render the same block from one code path.
+    let side: CGFloat
     let isOpen: Bool
     let isPressed: Bool
     /// Emphasis for the open cue (the Open-Path Highlight setting). The cue is drawn on
@@ -1030,6 +1034,8 @@ private struct BoardCell: View {
     /// VoiceOver user can't flick (WI-5.5). The board gates it on `isDealing`/`running`.
     var onAccessibilityPop: () -> Void = {}
 
+    private var cornerRadius: CGFloat { side * 12 / 48 }
+
     var body: some View {
         ZStack {
             if let block {
@@ -1039,12 +1045,12 @@ private struct BoardCell: View {
                     .transition(.identity)
             } else {
                 // The empty slot fades in gently as the block clears (F8), honoring reduce motion.
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
                     .fill(Color.ppInkGray.opacity(0.035))
                     .transition(.opacity)
             }
         }
-        .aspectRatio(1, contentMode: .fit)
+        .frame(width: side, height: side)
         .animation(reduceMotion ? nil : .easeOut(duration: 0.2), value: block == nil)
         .scaleEffect(pressScale)
         .animation(reduceMotion ? nil : .spring(response: 0.2, dampingFraction: 0.62), value: isPressed)
@@ -1055,96 +1061,20 @@ private struct BoardCell: View {
         ))
     }
 
+    // The block's intrinsic face comes from the shared `BlockFace`; the board layers on the
+    // run-state cues it owns (open-path highlight, miss stroke + shake) so those never leak into
+    // the guide / tutorial previews.
     private func blockView(_ block: PopBlock) -> some View {
-        ZStack {
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(block.tone.color)
-                .shadow(color: Color.ppInkGray.opacity(0.13), radius: 9, x: 0, y: 4)
-                .overlay(alignment: .top) {
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .fill(.white.opacity(0.45))
-                        .frame(height: 1)
-                        .padding(.horizontal, 10)
+        BlockFace(block, side: side)
+            .openPathCue(isOpen: isOpen, emphasized: showOpenHint, reduceMotion: reduceMotion, cornerRadius: cornerRadius)
+            .overlay {
+                if block.isMiss {
+                    RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                        .stroke(Color.ppSoftCoral.opacity(0.75), lineWidth: 2)
                 }
-                .overlay {
-                    BlockToneMotif(tone: block.tone)
-                }
-                .overlay {
-                    specialFrame(for: block)
-                }
-
-            blockGlyph(for: block)
-        }
-        .overlay(alignment: .topLeading) {
-            specialBadge(for: block)
-        }
-        .openPathCue(isOpen: isOpen, emphasized: showOpenHint, reduceMotion: reduceMotion, cornerRadius: 12)
-        .overlay {
-            if block.isMiss {
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .stroke(Color.ppSoftCoral.opacity(0.75), lineWidth: 2)
             }
-        }
-        .modifier(ShakeEffect(shakes: block.isMiss ? 2 : 0))
-        .animation(.linear(duration: 0.18), value: block.isMiss)
-    }
-
-    @ViewBuilder
-    private func blockGlyph(for block: PopBlock) -> some View {
-        if block.kind == .wild {
-            // Wild pops in any open direction — a four-way glyph, not a single arrow.
-            Image(systemName: "arrow.up.and.down.and.arrow.left.and.right")
-                .font(.system(size: 16, weight: .bold, design: .rounded))
-                .foregroundStyle(Color.ppInkGray)
-        } else {
-            Image(systemName: block.direction.symbolName)
-                .font(.system(size: 18, weight: .bold, design: .rounded))
-                .symbolRenderingMode(.monochrome)
-                .foregroundStyle(Color.ppInkGray)
-        }
-    }
-
-    /// A shape-based frame per special kind, each visually distinct from the others AND from the
-    /// two color-coded cell states it can co-occur with — the solid pulsing mint open-path cue
-    /// and the solid coral miss stroke. Bomb = dashed steel ring; armored = solid steel ring
-    /// (always steel, never coral, so a crack can't read as a miss — the badge marks the crack);
-    /// wild = dashed mint ring (dashed, so it stays distinct from the solid open-path cue).
-    @ViewBuilder
-    private func specialFrame(for block: PopBlock) -> some View {
-        switch block.kind {
-        case .bomb:
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .strokeBorder(Color.ppInkGray.opacity(0.38), style: StrokeStyle(lineWidth: 2, dash: [4, 3]))
-        case .armored:
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .strokeBorder(Color.ppInkGray.opacity(0.5), lineWidth: 2.5)
-        case .wild:
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .strokeBorder(Color.ppFreshMint.opacity(0.95), style: StrokeStyle(lineWidth: 2, dash: [3, 2.5]))
-        case .normal:
-            EmptyView()
-        }
-    }
-
-    @ViewBuilder
-    private func specialBadge(for block: PopBlock) -> some View {
-        if let symbol = badgeSymbol(for: block) {
-            Image(systemName: symbol)
-                .font(.system(size: 9, weight: .black, design: .rounded))
-                .foregroundStyle(Color.ppInkGray.opacity(0.9))
-                .padding(2)
-                .background(Circle().fill(Color.ppCardCream.opacity(0.92)))
-                .padding(3)
-        }
-    }
-
-    private func badgeSymbol(for block: PopBlock) -> String? {
-        switch block.kind {
-        case .normal: return nil
-        case .bomb: return "burst.fill"
-        case .armored: return block.armor > 0 ? "shield.fill" : "shield.lefthalf.filled"
-        case .wild: return "sparkles"
-        }
+            .modifier(ShakeEffect(shakes: block.isMiss ? 2 : 0))
+            .animation(.linear(duration: 0.18), value: block.isMiss)
     }
 
     private var pressScale: CGFloat {
@@ -1298,12 +1228,9 @@ private extension CGSize {
 }
 
 private extension BlockTone {
-    var color: Color {
-        switch self {
-        case .mistBlue: .ppMistBlue
-        case .lavenderMist: .ppLavenderMist
-        }
-    }
+    // The particle burst still reads its tint by tone; routed through the shared `fillColor` so a
+    // tone's color is defined exactly once (in DesignSystem).
+    var color: Color { fillColor }
 }
 
 private extension Direction {

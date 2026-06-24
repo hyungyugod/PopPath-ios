@@ -17,6 +17,8 @@ struct HomeView: View {
     let onSettings: () -> Void
     let onRecords: () -> Void
 
+    @State private var showGuide = false
+
     private var isFirstTime: Bool { stats.roundsPlayed == 0 }
 
     private var dailyDetail: String {
@@ -122,6 +124,11 @@ struct HomeView: View {
                         action: onToggleSound
                     )
                     IconTileButton(
+                        systemName: "questionmark.circle.fill",
+                        accessibilityLabel: language.text("How blocks work", "블록 안내"),
+                        action: { showGuide = true }
+                    )
+                    IconTileButton(
                         systemName: "gearshape.fill",
                         accessibilityLabel: language.text("Settings", "설정"),
                         action: onSettings
@@ -133,6 +140,12 @@ struct HomeView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .ppScreenPadding()
+        .sheet(isPresented: $showGuide) {
+            // Re-inject the language: a sheet is a new presentation context and won't always
+            // inherit the custom appLanguage environment key.
+            BlockGuideSheet()
+                .environment(\.appLanguage, language)
+        }
     }
 }
 
@@ -209,6 +222,162 @@ private struct DecorativeBlock: View {
             )
             .rotationEffect(.degrees(rotation))
             .offset(y: yOffset)
+    }
+}
+
+/// One row of the home block guide: a real block face / board chip + name + one-line ability.
+struct BlockGuideEntry: Identifiable, Equatable {
+    let id: String
+    let face: GuideFaceKind
+    var direction: Direction = .right
+    var tone: BlockTone = .mistBlue
+    let titleEN: String
+    let titleKO: String
+    let detailEN: String
+    let detailKO: String
+
+    /// Teaching order: the base rule, then the three specials, then the two board modifiers
+    /// (rendered as chips, since modifiers are board states rather than blocks).
+    static let all: [BlockGuideEntry] = [
+        BlockGuideEntry(
+            id: "normal", face: .block(.normal, cracked: false), tone: .mistBlue,
+            titleEN: "Normal", titleKO: "기본 블록",
+            detailEN: "Flick it the way its arrow points.",
+            detailKO: "화살표 방향으로 밀어요."
+        ),
+        BlockGuideEntry(
+            id: "bomb", face: .block(.bomb, cracked: false), tone: .lavenderMist,
+            titleEN: "Bomb", titleKO: "폭탄",
+            detailEN: "Pops, then clears its whole row and column.",
+            detailKO: "팡 하고 같은 가로·세로 줄을 정리해요."
+        ),
+        BlockGuideEntry(
+            id: "armored", face: .block(.armored, cracked: false), direction: .up, tone: .mistBlue,
+            titleEN: "Armored", titleKO: "단단한 블록",
+            detailEN: "Takes two flicks — the first only cracks it.",
+            detailKO: "두 번 밀어야 깨져요 — 처음엔 금만 가요."
+        ),
+        BlockGuideEntry(
+            id: "wild", face: .block(.wild, cracked: false), tone: .lavenderMist,
+            titleEN: "Wild", titleKO: "만능 블록",
+            detailEN: "Flick it any open direction.",
+            detailKO: "열린 쪽 아무 방향으로나 밀어요."
+        ),
+        BlockGuideEntry(
+            id: "rush", face: .modifier(.rush),
+            titleEN: "Rush board", titleKO: "러시 보드",
+            detailEN: "Double points, but chains fade faster.",
+            detailKO: "점수 2배 — 대신 체인이 빨리 식어요."
+        ),
+        BlockGuideEntry(
+            id: "bonus", face: .modifier(.bonus),
+            titleEN: "Bonus board", titleKO: "보너스 보드",
+            detailEN: "Big clear bonus and extra time.",
+            detailKO: "클리어 보너스와 추가 시간!"
+        )
+    ]
+}
+
+/// A glance-and-dismiss reference, reachable from Home, showing what each block / board does —
+/// every row previews the same `BlockFace` the live board draws, so players recognize them.
+struct BlockGuideSheet: View {
+    @Environment(\.appLanguage) private var language
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        VStack(spacing: 0) {
+            HStack(spacing: 12) {
+                Text(language.text("How blocks work", "블록 설명"))
+                    .font(.ppDisplay(22, weight: .bold, language: language))
+                    .foregroundStyle(Color.ppInkGray)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+
+                Spacer(minLength: 8)
+
+                Button(action: { dismiss() }) {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 15, weight: .bold, design: .rounded))
+                        .foregroundStyle(Color.ppInkGray.opacity(0.82))
+                        .frame(width: 36, height: 36)
+                        .background(
+                            Circle()
+                                .fill(Color.ppCardCream)
+                                .shadow(color: Color.ppInkGray.opacity(0.11), radius: 9, x: 0, y: 4)
+                        )
+                        .frame(width: 44, height: 44)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(language.text("Close", "닫기"))
+            }
+            .padding(.top, 20)
+            .padding(.bottom, 16)
+
+            ScrollView(showsIndicators: false) {
+                VStack(spacing: 10) {
+                    ForEach(BlockGuideEntry.all) { entry in
+                        BlockGuideRow(entry: entry)
+                    }
+
+                    // Reassures that the new tints are a bonus cue, not the only one (the badge
+                    // and shape carry the meaning) — the colorblind-safety promise, stated plainly.
+                    Text(language.text(
+                        "Color is a bonus hint — the badge and shape tell you the kind.",
+                        "색은 보조 힌트예요 — 모양과 배지로 구분해요."
+                    ))
+                    .font(.ppBody(12, weight: .medium, language: language))
+                    .foregroundStyle(Color.ppWarmGray)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.top, 8)
+                    .padding(.bottom, 20)
+                }
+            }
+        }
+        .ppScreenPadding()
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Color.ppWarmCream.ignoresSafeArea())
+        .presentationDetents([.medium, .large])
+        .presentationDragIndicator(.visible)
+    }
+}
+
+private struct BlockGuideRow: View {
+    @Environment(\.appLanguage) private var language
+    let entry: BlockGuideEntry
+
+    var body: some View {
+        HStack(spacing: 14) {
+            GuideFace(kind: entry.face, direction: entry.direction, tone: entry.tone, side: 44)
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text(language.text(entry.titleEN, entry.titleKO))
+                    .font(.ppDisplay(16, weight: .semibold, language: language))
+                    .foregroundStyle(Color.ppInkGray)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+                Text(language.text(entry.detailEN, entry.detailKO))
+                    .font(.ppBody(13, weight: .medium, language: language))
+                    .foregroundStyle(Color.ppWarmGray)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Spacer(minLength: 6)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 11)
+        .frame(maxWidth: .infinity)
+        .background(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(Color.ppCardCream)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .stroke(Color.ppInkGray.opacity(0.06), lineWidth: 1)
+                )
+        )
+        // One combined element so VoiceOver reads "Bomb, Pops then clears its whole row and column."
+        .accessibilityElement(children: .combine)
     }
 }
 
@@ -824,6 +993,10 @@ struct TutorialInfoItem: Equatable {
     let titleKO: String
     let detailEN: String
     let detailKO: String
+    /// When set, the row previews the REAL block face / board chip (the same pixels the live
+    /// board draws) instead of a generic SF Symbol — so a player recognizes these in-game. Left
+    /// optional with a default so the `systemImage` stays a back-compat fallback.
+    var faceKind: GuideFaceKind? = nil
 }
 
 struct TutorialInfo: Equatable {
@@ -930,25 +1103,29 @@ enum TutorialContent {
                     systemImage: "burst.fill",
                     titleEN: "Bomb", titleKO: "폭탄",
                     detailEN: "Pops its whole row and column at once.",
-                    detailKO: "같은 가로·세로 줄을 한 번에 정리해요."
+                    detailKO: "같은 가로·세로 줄을 한 번에 정리해요.",
+                    faceKind: .block(.bomb, cracked: false)
                 ),
                 TutorialInfoItem(
                     systemImage: "shield.lefthalf.filled",
                     titleEN: "Armored", titleKO: "단단한 블록",
                     detailEN: "Takes two flicks to break.",
-                    detailKO: "두 번 밀어야 깨져요."
+                    detailKO: "두 번 밀어야 깨져요.",
+                    faceKind: .block(.armored, cracked: false)
                 ),
                 TutorialInfoItem(
                     systemImage: "arrow.up.and.down.and.arrow.left.and.right",
                     titleEN: "Wild", titleKO: "만능 블록",
                     detailEN: "Flick it any open direction.",
-                    detailKO: "열린 쪽 아무 방향으로나 밀어요."
+                    detailKO: "열린 쪽 아무 방향으로나 밀어요.",
+                    faceKind: .block(.wild, cracked: false)
                 ),
                 TutorialInfoItem(
                     systemImage: "bolt.fill",
                     titleEN: "Rush board", titleKO: "러시 보드",
                     detailEN: "Double points — but chains fade faster.",
-                    detailKO: "점수 2배 — 대신 체인이 더 빨리 식어요."
+                    detailKO: "점수 2배 — 대신 체인이 더 빨리 식어요.",
+                    faceKind: .modifier(.rush)
                 )
             ]
         ))
@@ -1410,7 +1587,7 @@ private struct TutorialMiniCell: View {
             .frame(width: 52, height: 52)
             .background(
                 RoundedRectangle(cornerRadius: 13, style: .continuous)
-                    .fill(tone.tutorialColor)
+                    .fill(tone.fillColor)
                     .shadow(color: Color.ppInkGray.opacity(0.12), radius: 8, x: 0, y: 4)
             )
             .overlay {
@@ -1438,7 +1615,7 @@ private struct TutorialPoppingBlock: View {
             .frame(width: 52, height: 52)
             .background(
                 RoundedRectangle(cornerRadius: 13, style: .continuous)
-                    .fill(tone.tutorialColor)
+                    .fill(tone.fillColor)
                     .shadow(color: Color.ppInkGray.opacity(0.12), radius: 8, x: 0, y: 4)
             )
             .scaleEffect(reduceMotion ? 1 : 1 - 0.22 * progress)
@@ -1465,11 +1642,17 @@ private struct TutorialInfoCard: View {
         VStack(spacing: 9) {
             ForEach(Array(info.items.enumerated()), id: \.offset) { _, item in
                 HStack(spacing: 12) {
-                    Image(systemName: item.systemImage)
-                        .font(.system(size: 16, weight: .bold, design: .rounded))
-                        .foregroundStyle(Color.ppMintButtonText)
-                        .frame(width: 34, height: 34)
-                        .background(Circle().fill(Color.ppFreshMint))
+                    if let faceKind = item.faceKind {
+                        // Preview the REAL block face / board chip — the same pixels the live
+                        // board draws — so these aren't a surprise in-game.
+                        GuideFace(kind: faceKind, side: 38)
+                    } else {
+                        Image(systemName: item.systemImage)
+                            .font(.system(size: 16, weight: .bold, design: .rounded))
+                            .foregroundStyle(Color.ppMintButtonText)
+                            .frame(width: 34, height: 34)
+                            .background(Circle().fill(Color.ppFreshMint))
+                    }
 
                     VStack(alignment: .leading, spacing: 2) {
                         Text(language.text(item.titleEN, item.titleKO))
@@ -1501,14 +1684,6 @@ private struct TutorialInfoCard: View {
     }
 }
 
-private extension BlockTone {
-    var tutorialColor: Color {
-        switch self {
-        case .mistBlue: .ppMistBlue
-        case .lavenderMist: .ppLavenderMist
-        }
-    }
-}
 
 struct SettingsView: View {
     @Environment(\.appLanguage) private var appLanguage
