@@ -831,8 +831,9 @@ final class GameModel: ObservableObject {
 
     /// Direction-true pop: a flick clears a block only when it matches the block's arrow
     /// AND the block has a clear runway to the edge. A matching flick into a blocked block,
-    /// or any wrong-direction flick, registers a miss. The board gesture only forwards a
-    /// resolved flick here — a tap never reaches this method.
+    /// or any wrong-direction flick, registers a miss. The board gesture forwards both a
+    /// resolved flick AND a tap here — a tap arrives as the block's own arrow direction (wild
+    /// taps as any open lane), so tapping an escapable block pops it and tapping a blocked one misses.
     func attemptPop(
         row: Int,
         column: Int,

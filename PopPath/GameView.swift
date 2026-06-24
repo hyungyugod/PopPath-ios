@@ -759,14 +759,26 @@ private struct BoardView: View {
             .onEnded { value in
                 let start = cellPosition(at: value.startLocation, cellSize: cellSize)
                 pressedCell = nil
-                guard let start,
-                      let direction = resolvedSwipeDirection(value)
-                else {
-                    // A tap or a sub-threshold drag resolves to no direction → no-op.
-                    return
-                }
+                guard let start else { return }
+                // A deliberate flick stays direction-true (a wrong-direction flick still misses).
+                // A tap — or a sub-threshold drag — has no resolved direction, so we pop the block
+                // along its OWN arrow (wild taps take any open lane): one touch clears it, no
+                // precise swipe needed. Tapping a block with no clear runway still misses.
+                guard let direction = resolvedSwipeDirection(value) ?? tapDirection(at: start) else { return }
                 onFlick(start.row, start.column, direction)
             }
+    }
+
+    /// The direction a *tap* on this cell should pop: the block's own arrow, or for a wild block
+    /// any lane with a clear runway. nil when the cell is empty. Mirrors the VoiceOver pop path.
+    private func tapDirection(at pos: BoardPosition) -> Direction? {
+        guard let block = board[pos.row][pos.column] else { return nil }
+        if block.kind == .wild {
+            return Direction.allCases.first {
+                GameRules.hasClearRunway(on: board, row: pos.row, column: pos.column, direction: $0)
+            } ?? block.direction
+        }
+        return block.direction
     }
 
     private func cellPosition(at point: CGPoint, cellSize: CGFloat) -> BoardPosition? {

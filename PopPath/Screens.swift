@@ -269,8 +269,8 @@ struct BlockGuideEntry: Identifiable, Equatable {
         BlockGuideEntry(
             id: "normal", face: .block(.normal, cracked: false), tone: .mistBlue,
             titleEN: "Normal", titleKO: "기본 블록",
-            detailEN: "Flick it the way its arrow points.",
-            detailKO: "화살표 방향으로 밀어요."
+            detailEN: "Tap it, or flick the way its arrow points.",
+            detailKO: "톡 누르거나 화살표 방향으로 밀어요."
         ),
         BlockGuideEntry(
             id: "bomb", face: .block(.bomb, cracked: false), tone: .lavenderMist,
@@ -281,14 +281,14 @@ struct BlockGuideEntry: Identifiable, Equatable {
         BlockGuideEntry(
             id: "armored", face: .block(.armored, cracked: false), direction: .up, tone: .mistBlue,
             titleEN: "Armored", titleKO: "단단한 블록",
-            detailEN: "Takes two flicks — the first only cracks it.",
-            detailKO: "두 번 밀어야 깨져요 — 처음엔 금만 가요."
+            detailEN: "Two taps to break — the first only cracks it.",
+            detailKO: "두 번 눌러야 깨져요 — 처음엔 금만 가요."
         ),
         BlockGuideEntry(
             id: "wild", face: .block(.wild, cracked: false), tone: .lavenderMist,
             titleEN: "Wild", titleKO: "만능 블록",
-            detailEN: "Flick it any open direction.",
-            detailKO: "열린 쪽 아무 방향으로나 밀어요."
+            detailEN: "Tap it, or flick any open direction.",
+            detailKO: "톡 누르거나 열린 쪽으로 밀어요."
         ),
         BlockGuideEntry(
             id: "rush", face: .modifier(.rush),
@@ -1243,10 +1243,10 @@ enum TutorialContent {
     /// Then a heads-up on the special blocks and boards now in play.
     static let pages: [TutorialPage] = [
         .board(TutorialStage(
-            titleEN: "Flick the way the arrow points",
-            titleKO: "화살표 방향으로 밀어요",
-            subtitleEN: "Flick the block toward its arrow — it slides off the edge and pops.",
-            subtitleKO: "화살표 방향으로 밀면 블록이 가장자리로 빠지며 팡!",
+            titleEN: "Flick or tap the arrow block",
+            titleKO: "밀거나 톡 눌러요",
+            subtitleEN: "Flick the block toward its arrow — or just tap it — and it slides off the edge and pops.",
+            subtitleKO: "화살표 방향으로 밀거나, 블록을 톡 눌러도 가장자리로 빠지며 팡!",
             board: grid([
                 [nil, nil, nil, nil],
                 [nil, .right, nil, nil]
@@ -1297,15 +1297,15 @@ enum TutorialContent {
                 TutorialInfoItem(
                     systemImage: "shield.lefthalf.filled",
                     titleEN: "Armored", titleKO: "단단한 블록",
-                    detailEN: "Takes two flicks to break.",
-                    detailKO: "두 번 밀어야 깨져요.",
+                    detailEN: "Takes two taps to break.",
+                    detailKO: "두 번 눌러야 깨져요.",
                     faceKind: .block(.armored, cracked: false)
                 ),
                 TutorialInfoItem(
                     systemImage: "arrow.up.and.down.and.arrow.left.and.right",
                     titleEN: "Wild", titleKO: "만능 블록",
-                    detailEN: "Flick it any open direction.",
-                    detailKO: "열린 쪽 아무 방향으로나 밀어요.",
+                    detailEN: "Tap it, or flick any open direction.",
+                    detailKO: "톡 누르거나 열린 쪽으로 밀어요.",
                     faceKind: .block(.wild, cracked: false)
                 ),
                 TutorialInfoItem(
@@ -1627,15 +1627,17 @@ struct TutorialView: View {
         .gesture(
             DragGesture(minimumDistance: 0, coordinateSpace: .named(Self.boardSpace))
                 .onEnded { value in
-                    guard let start = cellPosition(at: value.startLocation),
-                          let direction = Direction.resolveFlick(
-                            translation: value.translation,
-                            predictedEndTranslation: value.predictedEndTranslation
-                          )
-                    else {
-                        return
+                    guard let start = cellPosition(at: value.startLocation) else { return }
+                    if let direction = Direction.resolveFlick(
+                        translation: value.translation,
+                        predictedEndTranslation: value.predictedEndTranslation
+                    ) {
+                        engine.flick(at: start, direction: direction)
+                    } else if let tapped = engine.cell(start.row, start.column) {
+                        // A tap also works, exactly like the live board: pop the tapped block
+                        // along its own arrow.
+                        engine.flick(at: start, direction: tapped.direction)
                     }
-                    engine.flick(at: start, direction: direction)
                 }
         )
         // VoiceOver users can't flick, so the board is also an activate-able element that
@@ -1731,12 +1733,12 @@ struct TutorialView: View {
         guard let direction = engine.expectedDirection else { return "" }
         let name = direction.accessibilityName(language: language)
         if engine.rejectedAt != nil {
-            return language.text("Flick \(name) on the glowing block", "빛나는 블록을 \(name)으로 밀어요")
+            return language.text("Tap the glowing block, or flick \(name)", "빛나는 블록을 톡 누르거나 \(name)으로 밀어요")
         }
         if engine.currentStage?.teachesChain == true, engine.chain > 0 {
-            return language.text("Chain ×\(engine.chain) · flick \(name)", "체인 ×\(engine.chain) · \(name)으로 밀어요")
+            return language.text("Chain ×\(engine.chain) · tap or flick \(name)", "체인 ×\(engine.chain) · 톡 누르거나 \(name)으로 밀어요")
         }
-        return language.text("Flick \(name)", "\(name)으로 밀어요")
+        return language.text("Tap, or flick \(name)", "톡 누르거나 \(name)으로 밀어요")
     }
 
     private var pageDots: some View {

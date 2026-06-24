@@ -502,9 +502,10 @@ final class GameRulesTests: XCTestCase {
         XCTAssertEqual(model.score, 10)
     }
 
-    func testTapDoesNotPopEscapableCell() {
-        // The board gesture only forwards a pop when a flick resolves to a direction; a tap
-        // (sub-threshold translation) resolves to nil and never reaches `attemptPop`.
+    func testFlickResolverDistinguishesTapsFromFlicks() {
+        // The resolver returns nil for a tap / sub-threshold drag — that's how the board gesture
+        // tells a tap apart from a flick. (A tap is no longer a no-op: the gesture pops the block
+        // along its own arrow instead. A real flick still resolves to its swiped direction.)
         XCTAssertNil(Direction.swipeDirection(for: .zero, minimumDistance: 14, axisBias: 1.16))
         XCTAssertNil(Direction.swipeDirection(for: CGSize(width: 3, height: 4), minimumDistance: 14, axisBias: 1.16))
         XCTAssertEqual(
