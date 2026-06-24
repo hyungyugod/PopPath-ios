@@ -18,8 +18,11 @@ struct HomeView: View {
     let onRecords: () -> Void
 
     @State private var showGuide = false
+    @State private var showTiers = false
 
     private var isFirstTime: Bool { stats.roundsPlayed == 0 }
+    /// The player's current rank, derived from their best score — drives the tappable badge.
+    private var bestGrade: Grade { Grade.forScore(best) }
 
     private var dailyDetail: String {
         if isDailyCompletedToday {
@@ -76,8 +79,25 @@ struct HomeView: View {
                     PillStat(label: language.text("BEST", "최고"), value: best.formatted())
                         .padding(.bottom, 8)
 
-                    GradeBadge(grade: Grade.forScore(best), compact: true)
-                        .padding(.bottom, isShort ? 10 : 12)
+                    Button { showTiers = true } label: {
+                        HStack(spacing: 6) {
+                            GradeBadge(grade: bestGrade, compact: true)
+                            Image(systemName: "chevron.right")
+                                .font(.system(size: 10, weight: .heavy, design: .rounded))
+                                .foregroundStyle(Color.ppWarmGray)
+                        }
+                        // Keep the badge visually compact but give the tap a ≥44pt target (G4).
+                        .frame(minHeight: 44)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel(language.text(
+                        "Your grade: \(bestGrade.nameEN). View all tiers.",
+                        "내 등급: \(bestGrade.nameKO). 전체 티어 보기."
+                    ))
+                    .accessibilityAddTraits(.isButton)
+                    .padding(.bottom, isShort ? 10 : 12)
 
                     HStack(spacing: 8) {
                         MiniRecordStat(label: language.text("RUNS", "판수"), value: stats.roundsPlayed.formatted())
@@ -147,6 +167,10 @@ struct HomeView: View {
             // Re-inject the language: a sheet is a new presentation context and won't always
             // inherit the custom appLanguage environment key.
             BlockGuideSheet()
+                .environment(\.appLanguage, language)
+        }
+        .sheet(isPresented: $showTiers) {
+            TierLadderSheet(best: best)
                 .environment(\.appLanguage, language)
         }
     }
@@ -381,6 +405,142 @@ private struct BlockGuideRow: View {
         )
         // One combined element so VoiceOver reads "Bomb, Pops then clears its whole row and column."
         .accessibilityElement(children: .combine)
+    }
+}
+
+/// The full rank ladder, reachable by tapping the grade badge on Home. Lists every tier with its
+/// score band, highest first, and highlights the row the player's best score currently sits in.
+struct TierLadderSheet: View {
+    @Environment(\.appLanguage) private var language
+    @Environment(\.dismiss) private var dismiss
+    let best: Int
+
+    private var currentTier: Int { Grade.forScore(best).tier }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            HStack(spacing: 12) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(language.text("Tiers", "티어표"))
+                        .font(.ppDisplay(22, weight: .bold, language: language))
+                        .foregroundStyle(Color.ppInkGray)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
+                    Text(language.text("By your best score", "최고 점수 기준"))
+                        .font(.ppBody(12, weight: .medium, language: language))
+                        .foregroundStyle(Color.ppWarmGray)
+                }
+
+                Spacer(minLength: 8)
+
+                Button(action: { dismiss() }) {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 15, weight: .bold, design: .rounded))
+                        .foregroundStyle(Color.ppInkGray.opacity(0.82))
+                        .frame(width: 36, height: 36)
+                        .background(
+                            Circle()
+                                .fill(Color.ppCardCream)
+                                .shadow(color: Color.ppInkGray.opacity(0.11), radius: 9, x: 0, y: 4)
+                        )
+                        .frame(width: 44, height: 44)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(language.text("Close", "닫기"))
+            }
+            .padding(.top, 20)
+            .padding(.bottom, 16)
+
+            ScrollView(showsIndicators: false) {
+                VStack(spacing: 8) {
+                    ForEach(Grade.allTiers.reversed(), id: \.tier) { grade in
+                        TierLadderRow(grade: grade, isCurrent: grade.tier == currentTier, best: best)
+                    }
+                }
+                .padding(.bottom, 20)
+            }
+        }
+        .ppScreenPadding()
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Color.ppWarmCream.ignoresSafeArea())
+        .presentationDetents([.medium, .large])
+        .presentationDragIndicator(.visible)
+    }
+}
+
+private struct TierLadderRow: View {
+    @Environment(\.appLanguage) private var language
+    let grade: Grade
+    let isCurrent: Bool
+    let best: Int
+
+    var body: some View {
+        HStack(spacing: 14) {
+            ZStack {
+                Circle().fill(grade.badgeColor)
+                Image(systemName: grade.badgeSymbol)
+                    .font(.system(size: 16, weight: .black, design: .rounded))
+                    .foregroundStyle(grade.badgeTextColor)
+            }
+            .frame(width: 40, height: 40)
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text(grade.name(language: language))
+                    .font(.ppDisplay(16, weight: .semibold, language: language))
+                    .foregroundStyle(Color.ppInkGray)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+                Text(rangeText)
+                    .font(.ppBody(12, weight: .medium, language: language))
+                    .foregroundStyle(Color.ppWarmGray)
+                    .monospacedDigit()
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+            }
+
+            Spacer(minLength: 6)
+
+            if isCurrent {
+                Text(language.text("YOU \(best.formatted())", "현재 \(best.formatted())점"))
+                    .font(.ppBody(11, weight: .heavy, language: language))
+                    .monospacedDigit()
+                    .foregroundStyle(grade.badgeTextColor)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+                    .padding(.horizontal, 9)
+                    .padding(.vertical, 5)
+                    .background(Capsule(style: .continuous).fill(grade.badgeColor))
+            }
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 11)
+        .frame(maxWidth: .infinity)
+        .background(
+            // 0.10 (not 0.14) keeps the warmGray range text ≥4.5:1 on every tier's tint (G5);
+            // the 2pt colored border + "현재" chip still make the player's row pop.
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(isCurrent ? grade.badgeColor.opacity(0.10) : Color.ppCardCream)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .stroke(
+                            isCurrent ? grade.badgeColor.opacity(0.55) : Color.ppInkGray.opacity(0.06),
+                            lineWidth: isCurrent ? 2 : 1
+                        )
+                )
+        )
+        .accessibilityElement(children: .combine)
+        .accessibilityAddTraits(isCurrent ? [.isSelected] : [])
+    }
+
+    /// The tier's score band: "lo–hi" for ranked tiers, "lo+" for the top tier, "0–hi" for Rookie.
+    private var rangeText: String {
+        let lo = grade.threshold
+        guard let next = grade.next else {
+            return language.text("\(lo.formatted())+", "\(lo.formatted())점 이상")
+        }
+        let hi = next.threshold - 1
+        return language.text("\(lo.formatted())–\(hi.formatted())", "\(lo.formatted())~\(hi.formatted())점")
     }
 }
 
