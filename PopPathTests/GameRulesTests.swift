@@ -715,23 +715,23 @@ final class GameRulesTests: XCTestCase {
 
     func testGradeLadderForScore() {
         XCTAssertEqual(Grade.forScore(0).tier, 0)          // Rookie
-        XCTAssertEqual(Grade.forScore(7_499).tier, 0)      // still Rookie just under the gate
-        XCTAssertEqual(Grade.forScore(7_500).tier, 1)      // Bronze
-        XCTAssertEqual(Grade.forScore(12_499).tier, 1)
-        XCTAssertEqual(Grade.forScore(12_500).tier, 2)     // Silver
-        XCTAssertEqual(Grade.forScore(52_499).tier, 9)     // Master, one below the top gate
-        XCTAssertEqual(Grade.forScore(52_500).tier, 10)    // Grandmaster
+        XCTAssertEqual(Grade.forScore(4_999).tier, 0)      // still Rookie just under the gate
+        XCTAssertEqual(Grade.forScore(5_000).tier, 1)      // Bronze
+        XCTAssertEqual(Grade.forScore(9_999).tier, 1)
+        XCTAssertEqual(Grade.forScore(10_000).tier, 2)     // Silver
+        XCTAssertEqual(Grade.forScore(49_999).tier, 9)     // Master, one below the top gate
+        XCTAssertEqual(Grade.forScore(50_000).tier, 10)    // Grandmaster
         XCTAssertEqual(Grade.forScore(1_000_000).tier, 10) // never exceeds the top tier
 
-        // Ten ranked tiers, 5,000 apart starting at 7,500.
+        // Ten ranked tiers, 5,000 apart starting at 5,000.
         XCTAssertEqual(Grade.ranked.count, 10)
         XCTAssertEqual(
             Grade.ranked.map(\.threshold),
-            Array(stride(from: 7_500, through: 52_500, by: 5_000))
+            Array(stride(from: 5_000, through: 50_000, by: 5_000))
         )
 
         // Progress-to-next reads off the live score; the top tier reports none.
-        XCTAssertEqual(Grade.forScore(10_000).pointsToNext(from: 10_000), 2_500) // → Silver at 12.5k
+        XCTAssertEqual(Grade.forScore(7_000).pointsToNext(from: 7_000), 3_000) // Bronze → Silver at 10k
         XCTAssertNil(Grade.forScore(60_000).pointsToNext(from: 60_000))
     }
 
