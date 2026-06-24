@@ -327,6 +327,8 @@ struct BoardToast: Identifiable, Equatable {
         case freshPath
         case clear
         case celebration
+        /// A wrong-flick score deduction — the one red, negative toast style.
+        case penalty
     }
 
     let id = UUID()
@@ -350,6 +352,7 @@ struct BoardToast: Identifiable, Equatable {
         case "BOARD CLEAR": return "싹쓸이!"
         case "NEW BEST": return "최고 기록!"
         case "ACHIEVEMENT": return "업적 달성!"
+        case "MISS": return "삐끗"
         default: return title
         }
     }
@@ -1026,7 +1029,13 @@ final class GameModel: ObservableObject {
         applyMissTimePenalty()
         // A wrong flick also shaves a little score (clamped at 0). Applied every miss so it stays
         // deterministic; only the *sensory* feedback below is coalesced.
-        score = max(0, score - missScorePenalty)
+        let deducted = min(score, missScorePenalty)
+        score -= deducted
+        // Tell the player WHY their score dropped: a red "−N" toast in the banner lane (alongside
+        // the screen-edge flash). Only when points actually came off — at 0 there's nothing to show.
+        if deducted > 0 {
+            showMissPenaltyToast(deducted: deducted)
+        }
         // Coalesce rapid misses so a fumble doesn't machine-gun haptics/sound — and so the
         // screen-edge flash never strobes (J7/G8).
         if shouldEmitMissFeedback() {
@@ -1038,6 +1047,27 @@ final class GameModel: ObservableObject {
         Task { [weak self] in
             try? await Task.sleep(nanoseconds: 180_000_000)
             self?.clearMiss(id: blockID, row: row, column: column)
+        }
+    }
+
+    /// Surfaces the red "−N" penalty toast immediately, preempting whatever banner is showing so
+    /// the deduction lands with the screen flash. The chain just broke, so any not-yet-shown CHAIN
+    /// toast is now stale and is dropped; real reward toasts (unlock/clear/celebration) stay queued
+    /// and resume after the penalty clears.
+    private func showMissPenaltyToast(deducted: Int) {
+        pendingEvents.removeAll { $0.kind == .chain }
+        let toast = BoardToast(title: "MISS", detail: "−\(deducted)", style: .penalty)
+        boardToast = toast
+        toastTask?.cancel()
+        let duration: UInt64 = 820_000_000
+        toastTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: duration)
+            if Task.isCancelled { return }
+            guard let self else { return }
+            if self.boardToast?.id == toast.id {
+                self.boardToast = nil
+            }
+            self.drainEventQueue()
         }
     }
 

@@ -1194,6 +1194,7 @@ private struct BoardToastView: View {
         case .freshPath: "shuffle"
         case .clear: "checkmark"
         case .celebration: "crown.fill"
+        case .penalty: "exclamationmark.triangle.fill"
         }
     }
 
@@ -1209,6 +1210,7 @@ private struct BoardToastView: View {
         switch toast.style {
         case .chain, .unlock, .clear, .celebration: .ppMintButtonText
         case .freshPath: .ppMintText
+        case .penalty: .white
         }
     }
 
@@ -1217,6 +1219,7 @@ private struct BoardToastView: View {
         case .chain, .celebration: .ppSoftCoral
         case .unlock: .ppFreshMint
         case .freshPath, .clear: .ppFreshMint
+        case .penalty: .ppPenaltyRedDeep
         }
     }
 
@@ -1225,6 +1228,7 @@ private struct BoardToastView: View {
         case .chain, .celebration: Color.ppSoftCoral.opacity(0.3)
         case .unlock: Color.ppMintText.opacity(0.25)
         case .freshPath, .clear: Color.ppMintText.opacity(0.22)
+        case .penalty: Color.ppPenaltyRedDeep.opacity(0.32)
         }
     }
 }

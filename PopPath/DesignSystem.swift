@@ -83,6 +83,9 @@ extension Color {
     // deliberately a truer red than the softer `ppSoftCoral` miss stroke so a mistake reads as a
     // real penalty, not the gentle pastel coral used elsewhere.
     static let ppPenaltyRed = Color(hex: 0xE5484D)
+    // A deeper red for the penalty *toast* background so white label text clears WCAG AA (≥4.5:1)
+    // even at the 12pt title size; the brighter `ppPenaltyRed` above is only ever a blurred glow.
+    static let ppPenaltyRedDeep = Color(hex: 0xCC3A3E)
 }
 
 extension Grade {

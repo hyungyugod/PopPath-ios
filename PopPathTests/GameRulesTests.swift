@@ -682,6 +682,37 @@ final class GameRulesTests: XCTestCase {
         XCTAssertEqual(model.score, 0, "The miss penalty never drives the score negative")
     }
 
+    @MainActor
+    func testMissShowsPenaltyToastWhenPointsDeducted() {
+        let model = GameModel(makeInitialBoard: false)
+        var board = GameRules.emptyBoard()
+        board[3][5] = PopBlock(direction: .right, tone: .mistBlue)   // pop → score 10
+        board[2][1] = PopBlock(direction: .right, tone: .mistBlue)   // points right into the wall
+        board[2][4] = PopBlock(direction: .left, tone: .lavenderMist)
+        board[0][0] = PopBlock(direction: .up, tone: .mistBlue)      // keeps the board unstuck
+        model.loadBoardForTesting(board)
+
+        model.swipe(row: 3, column: 5, hapticsEnabled: false)        // score 10, chain 1
+        model.swipe(row: 2, column: 1, hapticsEnabled: false)        // miss → −5, score 5
+
+        XCTAssertEqual(model.score, 5)
+        XCTAssertEqual(model.boardToast?.style, .penalty, "A deducting miss surfaces the red penalty toast")
+        XCTAssertEqual(model.boardToast?.detail, "−5")
+    }
+
+    @MainActor
+    func testMissAtZeroScoreShowsNoPenaltyToast() {
+        let model = GameModel(makeInitialBoard: false)
+        var board = GameRules.emptyBoard()
+        board[2][1] = PopBlock(direction: .right, tone: .mistBlue)
+        board[2][4] = PopBlock(direction: .left, tone: .lavenderMist)
+        model.loadBoardForTesting(board)
+
+        model.swipe(row: 2, column: 1, hapticsEnabled: false)        // miss at score 0
+        XCTAssertEqual(model.score, 0)
+        XCTAssertNil(model.boardToast, "Nothing was deducted, so there is no penalty toast")
+    }
+
     func testGradeLadderForScore() {
         XCTAssertEqual(Grade.forScore(0).tier, 0)          // Rookie
         XCTAssertEqual(Grade.forScore(9_999).tier, 0)      // still Rookie just under the gate
