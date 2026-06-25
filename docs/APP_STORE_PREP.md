@@ -60,10 +60,16 @@ Completed locally:
 - Privacy manifest bundled with UserDefaults required-reason API coverage.
 - `xcodebuild test` passes on iPhone 17 simulator.
 - Codebase still contains no ads, in-app purchases, StoreKit purchase flow, or tracking SDK.
+- Universal iPhone + iPad target (`TARGETED_DEVICE_FAMILY = 1,2`), portrait-locked on
+  both, with the play column capped and centered on iPad so it reads as a designed
+  layout. Verified on iPhone 17, iPad mini, and iPad Pro 13".
+- `ITSAppUsesNonExemptEncryption = NO` set so uploads skip the export-compliance prompt.
+- Korean declared in `CFBundleLocalizations` + `knownRegions` so the store lists ko.
 
 Remaining owner-side App Store Connect tasks:
 
 - Set Apple Developer Team/signing account for device archive and upload.
-- Capture and approve final App Store screenshots.
+- Capture and approve final App Store screenshots — now required for BOTH iPhone and
+  iPad (a 12.9"/13" iPad set is mandatory once the binary advertises iPad support).
 - Confirm App Privacy answers: no tracking and no data collection.
 - Confirm age rating remains suitable for all ages.

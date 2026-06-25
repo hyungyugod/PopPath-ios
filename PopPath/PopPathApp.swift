@@ -51,6 +51,13 @@ struct RootView: View {
     @State private var handledLaunchArguments = false
     #endif
 
+    /// Largest the portrait play column is allowed to grow. Past a large phone (~440×932) the
+    /// extra space becomes centered cream margin on iPad rather than oversized blocks, a stretched
+    /// HUD, or content pinned to the top of a very tall screen. Every iPhone is within this box so
+    /// the cap is a no-op there; only iPad (and the rare huge width) gets the centered column.
+    private static let maxContentWidth: CGFloat = 540
+    private static let maxContentHeight: CGFloat = 960
+
     var body: some View {
         ZStack {
             Color.ppWarmCream
@@ -59,6 +66,12 @@ struct RootView: View {
             currentScreen
                 .environment(\.appLanguage, appLanguage)
                 .transition(.opacity.combined(with: .scale(scale: 0.985)))
+                // The game is designed as a one-hand portrait column. On iPad (and any width
+                // past a large phone) cap the content and center it on the warm background so it
+                // reads as a deliberate layout instead of a stretched phone — every screen lives
+                // inside `currentScreen`, so one cap covers Home/Game/Result/Records/Settings.
+                .frame(maxWidth: Self.maxContentWidth, maxHeight: Self.maxContentHeight)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .preferredColorScheme(.light)
         // Fonts scale with Dynamic Type (WI-5.6), but this is a real-time tile game with a

@@ -18,7 +18,7 @@ PopPath is currently planned as a free game with no ads, no in-app purchases, no
 - Local overall best, daily best, detailed lifetime records, and achievements
 - Shareable run summaries through the iOS share sheet
 - Sound, haptics, color assist, and reduce motion settings
-- iPhone portrait layout
+- Universal iPhone + iPad app, portrait, with the play column centered on iPad
 
 ## Open
 
