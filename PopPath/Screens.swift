@@ -26,7 +26,9 @@ struct HomeView: View {
 
     private var dailyDetail: String {
         if isDailyCompletedToday {
-            let streak = stats.currentStreak > 0 ? " · 🔥\(stats.currentStreak)" : ""
+            let streak = stats.currentStreak > 0
+                ? language.text(" · streak \(stats.currentStreak)", " · \(stats.currentStreak)연속")
+                : ""
             return language.text("Done today", "오늘 완료") + streak
         }
         if dailyBest > 0 {
@@ -40,11 +42,12 @@ struct HomeView: View {
             let isShort = proxy.size.height < 680
 
             VStack(spacing: 0) {
-                Spacer(minLength: isShort ? 22 : 42)
+                Color.clear
+                    .frame(height: isShort ? 12 : 64)
 
                 DecorativeBlockCluster()
                     .accessibilityHidden(true)
-                    .padding(.bottom, isShort ? 22 : 30)
+                    .padding(.bottom, isShort ? 14 : 20)
 
                 HStack(alignment: .firstTextBaseline, spacing: 0) {
                     Text("PopPath")
@@ -64,17 +67,12 @@ struct HomeView: View {
                     .minimumScaleFactor(0.82)
                     .padding(.top, 6)
 
-                Spacer(minLength: isShort ? 20 : 30)
+                Color.clear
+                    .frame(height: isShort ? 14 : 24)
 
                 if isFirstTime {
-                    // Welcoming zero-state instead of a row of zeroes (K7).
-                    Text(language.text("Your first run awaits — swipe, chain, pop!", "첫 판이 기다려요 — 밀고, 잇고, 팡!"))
-                        .font(.ppDisplay(15, weight: .medium, language: language))
-                        .foregroundStyle(Color.ppMintText)
-                        .multilineTextAlignment(.center)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .padding(.horizontal, 8)
-                        .padding(.bottom, isShort ? 14 : 18)
+                    HomeFirstRunHook(isShort: isShort)
+                        .padding(.bottom, isShort ? 12 : 16)
                 } else {
                     PillStat(label: language.text("BEST", "최고"), value: best.formatted())
                         .padding(.bottom, 8)
@@ -104,7 +102,7 @@ struct HomeView: View {
                         MiniRecordStat(label: language.text("AVG", "평균"), value: stats.averageScore.formatted())
                         MiniRecordStat(
                             label: language.text("STREAK", "연속"),
-                            value: stats.currentStreak > 0 ? "🔥\(stats.currentStreak)" : "—"
+                            value: stats.currentStreak > 0 ? stats.currentStreak.formatted() : "—"
                         )
                     }
                     .padding(.bottom, isShort ? 14 : 18)
@@ -160,7 +158,7 @@ struct HomeView: View {
                 .padding(.top, isShort ? 12 : 16)
                 .padding(.bottom, isShort ? 18 : 28)
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         }
         .ppScreenPadding()
         .sheet(isPresented: $showGuide) {
@@ -203,6 +201,106 @@ private struct MiniRecordStat: View {
             RoundedRectangle(cornerRadius: 14, style: .continuous)
                 .fill(Color.ppSoftSage)
         )
+    }
+}
+
+private struct HomeFirstRunHook: View {
+    @Environment(\.appLanguage) private var language
+
+    let isShort: Bool
+
+    var body: some View {
+        HStack(spacing: isShort ? 12 : 14) {
+            HomeBoardPreview()
+                .accessibilityHidden(true)
+
+            VStack(alignment: .leading, spacing: 4) {
+                Label(language.text("Today's goal", "오늘 목표"), systemImage: "target")
+                    .font(.ppBody(11, weight: .heavy, language: language))
+                    .foregroundStyle(Color.ppMintText)
+                    .lineLimit(1)
+
+                Text(language.text("Chase a 3-pop chain", "3연속 체인에 도전"))
+                    .font(.ppDisplay(isShort ? 16 : 18, weight: .semibold, language: language))
+                    .foregroundStyle(Color.ppInkGray)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.78)
+
+                Text(language.text("First record starts here", "첫 기록은 한 판이면 충분해요"))
+                    .font(.ppBody(12, weight: .medium, language: language))
+                    .foregroundStyle(Color.ppWarmGray)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.76)
+            }
+
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, isShort ? 10 : 12)
+        .frame(maxWidth: .infinity)
+        .background(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .fill(Color.ppSoftSage)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        .stroke(Color.ppMintText.opacity(0.12), lineWidth: 1)
+                )
+        )
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(language.text(
+            "Today's goal: chase a 3-pop chain. First record starts here.",
+            "오늘 목표: 3연속 체인에 도전. 첫 기록은 한 판이면 충분해요."
+        ))
+    }
+}
+
+private struct HomeBoardPreview: View {
+    private let cells: [[Direction?]] = [
+        [nil, .right, nil, nil],
+        [.up, .up, .up, nil]
+    ]
+
+    var body: some View {
+        VStack(spacing: 5) {
+            ForEach(0..<cells.count, id: \.self) { row in
+                HStack(spacing: 5) {
+                    ForEach(0..<cells[row].count, id: \.self) { column in
+                        if let direction = cells[row][column] {
+                            HomePreviewCell(direction: direction, isOpen: row == 1 && column < 3)
+                        } else {
+                            RoundedRectangle(cornerRadius: 7, style: .continuous)
+                                .fill(Color.ppInkGray.opacity(0.05))
+                                .frame(width: 24, height: 24)
+                        }
+                    }
+                }
+            }
+        }
+        .padding(7)
+        .background(
+            RoundedRectangle(cornerRadius: 13, style: .continuous)
+                .fill(Color.ppCardCream)
+                .shadow(color: Color.ppInkGray.opacity(0.08), radius: 8, x: 0, y: 4)
+        )
+    }
+}
+
+private struct HomePreviewCell: View {
+    let direction: Direction
+    let isOpen: Bool
+
+    var body: some View {
+        ArrowGlyph(arrow: direction.arrow, size: 10)
+            .foregroundStyle(Color.ppInkGray)
+            .frame(width: 24, height: 24)
+            .background(
+                RoundedRectangle(cornerRadius: 7, style: .continuous)
+                    .fill(isOpen ? Color.ppFreshMint.opacity(0.78) : Color.ppMistBlue)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 7, style: .continuous)
+                            .stroke(isOpen ? Color.ppMintText.opacity(0.35) : Color.clear, lineWidth: 1.5)
+                    )
+            )
     }
 }
 
@@ -557,7 +655,7 @@ struct ResultView: View {
             ScrollView(showsIndicators: false) {
                 resultContent
                     .padding(.top, 36)
-                    .padding(.bottom, 20)
+                    .padding(.bottom, 34)
             }
             .ppScreenPadding()
 
@@ -682,36 +780,30 @@ struct ResultView: View {
     }
 
     private var resultActions: some View {
-        VStack(spacing: 10) {
-            HStack(spacing: 10) {
-                ShareLink(item: summary.shareText(language: language)) {
-                    ResultActionButton(title: language.text("Share", "공유"), systemImage: "square.and.arrow.up", style: .secondary)
-                }
-
-                if canRetry {
-                    Button(action: onRetry) {
-                        ResultActionButton(title: language.text("Retry", "다시"), systemImage: "arrow.clockwise", style: .primary)
-                    }
-                    .buttonStyle(.plain)
-                } else {
-                    // One-shot Daily: no replay today, so the primary action returns Home (K13).
-                    Button(action: onHome) {
-                        ResultActionButton(title: language.text("Home", "홈"), systemImage: "house.fill", style: .primary)
-                    }
-                    .buttonStyle(.plain)
-                }
+        HStack(spacing: 10) {
+            ShareLink(item: summary.shareText(language: language)) {
+                ResultActionButton(title: language.text("Share", "공유"), systemImage: "square.and.arrow.up", style: .secondary)
             }
 
+            Button(action: onHome) {
+                ResultActionButton(
+                    title: language.text("Home", "홈"),
+                    systemImage: "house.fill",
+                    style: canRetry ? .secondary : .primary
+                )
+            }
+            .buttonStyle(.plain)
+
             if canRetry {
-                Button(language.text("Home", "홈"), action: onHome)
-                    .font(.ppDisplay(15, weight: .semibold, language: language))
-                    .foregroundStyle(Color.ppWarmGray)
-                    .lineLimit(1)
+                Button(action: onRetry) {
+                    ResultActionButton(title: language.text("Retry", "다시"), systemImage: "arrow.clockwise", style: .primary)
+                }
+                .buttonStyle(.plain)
             }
         }
         .ppScreenPadding()
         .padding(.top, 12)
-        .padding(.bottom, 14)
+        .padding(.bottom, 16)
         .background(alignment: .top) {
             Rectangle()
                 .fill(Color.ppWarmCream)
@@ -777,17 +869,17 @@ private struct ResultActionButton: View {
 
     var body: some View {
         Label(title, systemImage: systemImage)
-            .font(.ppDisplay(17, weight: .semibold, language: language))
+            .font(.ppDisplay(16, weight: .semibold, language: language))
             .foregroundStyle(foregroundColor)
             .lineLimit(1)
-            .minimumScaleFactor(0.8)
+            .minimumScaleFactor(0.76)
             .frame(maxWidth: .infinity)
-            .frame(height: 56)
+            .frame(height: 54)
             .background(
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                RoundedRectangle(cornerRadius: 17, style: .continuous)
                     .fill(backgroundColor)
                     .overlay(
-                        RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        RoundedRectangle(cornerRadius: 17, style: .continuous)
                             .stroke(strokeColor, lineWidth: 1)
                     )
                     .shadow(color: shadowColor, radius: 13, x: 0, y: 6)
@@ -845,6 +937,7 @@ struct RecordsView: View {
 
     let stats: PlayerStats
     let achievements: [Achievement]
+    let onPlay: () -> Void
     let onBack: () -> Void
 
     private var unlockedCount: Int {
@@ -882,6 +975,11 @@ struct RecordsView: View {
                     ResultStatCard(value: stats.bestDailyScore.formatted(), label: language.text("DAILY BEST", "오늘 최고"), valueColor: .ppMintText)
                 }
 
+                if stats.roundsPlayed == 0 {
+                    RecordsZeroStateGoal(onPlay: onPlay)
+                        .padding(.top, 12)
+                }
+
                 LazyVGrid(
                     columns: Array(repeating: GridItem(.flexible(), spacing: 10), count: 2),
                     spacing: 10
@@ -893,7 +991,7 @@ struct RecordsView: View {
                     RecordMetricTile(title: language.text("Swipes", "스와이프"), value: stats.totalPops.formatted(), icon: "hand.draw.fill")
                     RecordMetricTile(title: language.text("Unlocks", "길 열림"), value: stats.totalUnlocks.formatted(), icon: "key.fill")
                     RecordMetricTile(title: language.text("Board Clears", "싹쓸이"), value: stats.totalBoardClears.formatted(), icon: "rectangle.grid.2x2.fill")
-                    RecordMetricTile(title: language.text("Best Streak", "최고 연속"), value: "🔥\(stats.longestStreak)", icon: "flame.fill")
+                    RecordMetricTile(title: language.text("Best Streak", "최고 연속"), value: stats.longestStreak.formatted(), icon: "flame.fill")
                 }
                 .padding(.top, 12)
 
@@ -921,6 +1019,67 @@ struct RecordsView: View {
             }
         }
         .ppScreenPadding()
+    }
+}
+
+private struct RecordsZeroStateGoal: View {
+    @Environment(\.appLanguage) private var language
+
+    let onPlay: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 12) {
+                Image(systemName: "flag.checkered")
+                    .font(.system(size: 18, weight: .bold, design: .rounded))
+                    .foregroundStyle(Color.ppMintButtonText)
+                    .frame(width: 38, height: 38)
+                    .background(Circle().fill(Color.ppFreshMint))
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(language.text("First record: one run", "첫 기록까지 한 판"))
+                        .font(.ppDisplay(17, weight: .semibold, language: language))
+                        .foregroundStyle(Color.ppInkGray)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.78)
+
+                    Text(language.text("Nearest badge: First Swipe", "가장 가까운 업적: 첫 스와이프"))
+                        .font(.ppBody(12, weight: .medium, language: language))
+                        .foregroundStyle(Color.ppWarmGray)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.76)
+                }
+
+                Spacer(minLength: 0)
+            }
+
+            Button(action: onPlay) {
+                Label(language.text("Play first run", "첫 판 플레이"), systemImage: "play.fill")
+                    .font(.ppDisplay(15, weight: .semibold, language: language))
+                    .foregroundStyle(Color.ppMintButtonText)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.78)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 48)
+                    .background(
+                        RoundedRectangle(cornerRadius: 16, style: .continuous)
+                            .fill(Color.ppFreshMint)
+                            .shadow(color: Color.ppMintText.opacity(0.16), radius: 10, x: 0, y: 5)
+                    )
+            }
+            .buttonStyle(.plain)
+            .accessibilityHint(language.text("Starts a Classic run", "클래식 한 판을 시작해요"))
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .fill(Color.ppSoftSage)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        .stroke(Color.ppMintText.opacity(0.12), lineWidth: 1)
+                )
+        )
     }
 }
 
@@ -1243,8 +1402,8 @@ enum TutorialContent {
     /// Then a heads-up on the special blocks and boards now in play.
     static let pages: [TutorialPage] = [
         .board(TutorialStage(
-            titleEN: "Flick or tap the arrow block",
-            titleKO: "밀거나 톡 눌러요",
+            titleEN: "Try it on the board",
+            titleKO: "보드에서 직접 해보기",
             subtitleEN: "Flick the block toward its arrow — or just tap it — and it slides off the edge and pops.",
             subtitleKO: "화살표 방향으로 밀거나, 블록을 톡 눌러도 가장자리로 빠지며 팡!",
             board: grid([
@@ -1502,7 +1661,27 @@ struct TutorialView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            Spacer()
+            HStack {
+                Spacer()
+                Button(action: engine.skip) {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 15, weight: .bold, design: .rounded))
+                        .foregroundStyle(Color.ppInkGray.opacity(0.82))
+                        .frame(width: 36, height: 36)
+                        .background(
+                            Circle()
+                                .fill(Color.ppCardCream)
+                                .shadow(color: Color.ppInkGray.opacity(0.1), radius: 8, x: 0, y: 4)
+                        )
+                        .frame(width: 44, height: 44)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(language.text("Skip tutorial", "튜토리얼 건너뛰기"))
+            }
+            .padding(.top, 12)
+
+            Spacer(minLength: 4)
 
             pageContent
                 .frame(maxWidth: .infinity)
@@ -1547,13 +1726,13 @@ struct TutorialView: View {
                 }
                 .padding(.bottom, 12)
                 .transition(.opacity)
+            } else if engine.currentStage != nil {
+                TutorialActionCue(title: language.text("Pop the glowing block", "빛나는 블록 터뜨리기")) {
+                    engine.performHintedMove()
+                }
+                    .padding(.bottom, 12)
+                    .transition(.opacity)
             }
-
-            Button(language.text("Skip", "건너뛰기"), action: engine.skip)
-                .font(.ppDisplay(15, weight: .semibold, language: language))
-                .foregroundStyle(Color.ppWarmGray)
-                .padding(.bottom, 16)
-                .accessibilityHint(language.text("Skips the tutorial", "튜토리얼을 건너뛰어요"))
 
             pageDots
                 .padding(.bottom, 24)
@@ -1763,6 +1942,36 @@ struct TutorialView: View {
             return engine.isLastPage ? "play.fill" : "arrow.right"
         }
         return "hand.draw.fill"
+    }
+}
+
+private struct TutorialActionCue: View {
+    @Environment(\.appLanguage) private var language
+
+    let title: String
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Label(title, systemImage: "hand.draw.fill")
+                .font(.ppDisplay(15, weight: .semibold, language: language))
+                .foregroundStyle(Color.ppMintButtonText)
+                .lineLimit(1)
+                .minimumScaleFactor(0.78)
+                .padding(.horizontal, 16)
+                .frame(maxWidth: .infinity)
+                .frame(height: 48)
+                .background(
+                    RoundedRectangle(cornerRadius: 17, style: .continuous)
+                        .fill(Color.ppFreshMint.opacity(0.9))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 17, style: .continuous)
+                                .stroke(Color.white.opacity(0.32), lineWidth: 1)
+                        )
+                )
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(title)
     }
 }
 
@@ -2113,6 +2322,8 @@ private struct SettingRow: View {
 /// A tappable settings row that performs a navigational action (e.g. replay the tutorial),
 /// styled to match `SettingRow`.
 private struct SettingsLinkRow: View {
+    @Environment(\.appLanguage) private var language
+
     let title: String
     let subtitle: String
     let systemImage: String
@@ -2125,11 +2336,11 @@ private struct SettingsLinkRow: View {
             HStack(spacing: 16) {
                 VStack(alignment: .leading, spacing: 3) {
                     Text(title)
-                        .font(.ppDisplay(17, weight: .semibold))
+                        .font(.ppDisplay(17, weight: .semibold, language: language))
                         .foregroundStyle(titleColor)
                         .fixedSize(horizontal: false, vertical: true)
                     Text(subtitle)
-                        .font(.ppBody(13, weight: .medium))
+                        .font(.ppBody(13, weight: .medium, language: language))
                         .foregroundStyle(Color.ppWarmGray)
                         .fixedSize(horizontal: false, vertical: true)
                 }

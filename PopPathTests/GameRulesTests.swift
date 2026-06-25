@@ -438,13 +438,13 @@ final class GameRulesTests: XCTestCase {
         XCTAssertTrue(summary.shareText.contains("Best 2,000"))
         XCTAssertTrue(summary.shareText.contains("Unlocks 3"))
         XCTAssertTrue(summary.shareText.contains("Accuracy 92%"))
-        XCTAssertTrue(summary.shareText.contains("Play PopPath: \(RoundSummary.shareURL)"))
+        XCTAssertFalse(summary.shareText.contains("apps.apple.com/app/poppath"))
 
         let koreanShareText = summary.shareText(language: .korean)
         XCTAssertTrue(koreanShareText.contains("점수 1,234"))
         XCTAssertTrue(koreanShareText.contains("최고 2,000"))
         XCTAssertTrue(koreanShareText.contains("정확도 92%"))
-        XCTAssertTrue(koreanShareText.contains(RoundSummary.shareURL))
+        XCTAssertFalse(koreanShareText.contains("apps.apple.com/app/poppath"))
     }
 
     // MARK: - Sprint 8: localization, copy & audio polish
@@ -463,7 +463,25 @@ final class GameRulesTests: XCTestCase {
         XCTAssertTrue(text.contains("Daily ·"))
         XCTAssertFalse(text.contains("20260622"), "Raw YYYYMMDD id must be replaced by a friendly date")
         XCTAssertTrue(text.contains("Daily Best 500"))
-        XCTAssertTrue(text.contains(RoundSummary.shareURL))
+        XCTAssertFalse(text.contains("apps.apple.com/app/poppath"))
+    }
+
+    func testPracticeShareTextIsMarkedAsNotRecorded() {
+        let summary = RoundSummary(
+            score: 700,
+            best: 1_000,
+            maxChain: 4,
+            isPractice: true
+        )
+
+        let english = summary.shareText(language: .english)
+        XCTAssertTrue(english.contains("Practice · Classic"))
+        XCTAssertTrue(english.contains("Practice run — not recorded"))
+
+        let korean = summary.shareText(language: .korean)
+        XCTAssertTrue(korean.contains("연습 · 클래식"))
+        XCTAssertTrue(korean.contains("연습 판 — 기록 안 됨"))
+        XCTAssertFalse(korean.contains("apps.apple.com/app/poppath"))
     }
 
     func testDailyDisplayLabelIsLocalized() {
@@ -610,6 +628,31 @@ final class GameRulesTests: XCTestCase {
     }
 
     @MainActor
+    func testPausingFreezesWallClockAcrossInterruption() {
+        // GameView pauses the running round when the app leaves the foreground (incoming call,
+        // app switcher, background) so an interruption can't silently burn the 60s clock. This
+        // locks the model-side guarantee that View behavior relies on.
+        var fakeNow = Date(timeIntervalSinceReferenceDate: 5_000)
+        let model = GameModel(makeInitialBoard: false, now: { fakeNow })
+        var board = GameRules.emptyBoard()
+        board[3][5] = PopBlock(direction: .right, tone: .mistBlue)
+
+        model.loadBoardForTesting(board)
+        XCTAssertEqual(model.time, 60)
+
+        model.pause()
+        // 30s pass while backgrounded; RootView still fires handleForeground() on return, which
+        // must stay a no-op for the clock while paused.
+        fakeNow = fakeNow.addingTimeInterval(30)
+        model.handleForeground()
+        XCTAssertEqual(model.time, 60, "A paused interruption must not burn the wall clock")
+
+        model.resume()
+        XCTAssertEqual(model.time, 60, "Resume continues from the frozen time, not 30s later")
+        XCTAssertEqual(model.runState, .running)
+    }
+
+    @MainActor
     func testReshuffleBoardKeepsScoreAndTime() {
         let model = GameModel(makeInitialBoard: false)
         var board = GameRules.emptyBoard()
@@ -628,6 +671,28 @@ final class GameRulesTests: XCTestCase {
         XCTAssertEqual(model.chain, 1, "Reshuffle keeps the chain")
         XCTAssertTrue(model.running)
         XCTAssertGreaterThan(GameRules.blockCount(in: model.board), 0)
+    }
+
+    @MainActor
+    func testReshuffleBoardCanPrepareFreshBoardWhilePaused() {
+        let model = GameModel(makeInitialBoard: false)
+        var board = GameRules.emptyBoard()
+        board[0][0] = PopBlock(direction: .up, tone: .mistBlue)
+        board[3][5] = PopBlock(direction: .right, tone: .mistBlue)
+
+        model.loadBoardForTesting(board)
+        model.swipe(row: 3, column: 5, hapticsEnabled: false)
+        model.pause()
+        let scoreBefore = model.score
+        let timeBefore = model.time
+
+        model.reshuffleBoard()
+
+        XCTAssertEqual(model.runState, .paused, "Pause-menu reshuffle must not silently resume the run")
+        XCTAssertEqual(model.score, scoreBefore, "Pause-menu reshuffle keeps the score")
+        XCTAssertEqual(model.time, timeBefore, "Pause-menu reshuffle keeps the clock")
+        XCTAssertEqual(model.chain, 1, "Pause-menu reshuffle keeps the chain")
+        XCTAssertGreaterThan(GameRules.blockCount(in: model.board), 1)
     }
 
     @MainActor
@@ -655,7 +720,7 @@ final class GameRulesTests: XCTestCase {
 
     @MainActor
     func testMissAppliesTimePenalty() {
-        var fakeNow = Date(timeIntervalSinceReferenceDate: 2_000)
+        let fakeNow = Date(timeIntervalSinceReferenceDate: 2_000)
         let model = GameModel(makeInitialBoard: false, now: { fakeNow })
         var board = GameRules.emptyBoard()
         board[2][1] = PopBlock(direction: .right, tone: .mistBlue)

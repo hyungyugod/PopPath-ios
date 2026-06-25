@@ -3,6 +3,7 @@ import UIKit
 
 struct GameView: View {
     @Environment(\.appLanguage) private var language
+    @Environment(\.scenePhase) private var scenePhase
 
     @ObservedObject var game: GameModel
     // Bindings (not values) so the paused overlay can flip them mid-run (K17).
@@ -62,6 +63,14 @@ struct GameView: View {
                     soundEnabled: $soundEnabled,
                     hapticsEnabled: $hapticsEnabled,
                     colorAssist: $colorAssist,
+                    isDaily: game.mode == .daily,
+                    onNewBoard: {
+                        game.reshuffleBoard()
+                    },
+                    onRestartDaily: {
+                        showPausedOverlay = false
+                        showDailyRestartConfirm = true
+                    },
                     onResume: {
                         game.resume()
                         showPausedOverlay = false
@@ -121,6 +130,18 @@ struct GameView: View {
         }
         .onChange(of: showDailyRestartConfirm) { _, showing in
             if !showing && game.runState == .paused { game.resume() }
+        }
+        // Leaving the foreground mid-round (incoming call, Control/Notification Center, the app
+        // switcher, or a full background) must not burn the 60s wall clock — that loses a whole
+        // run to a single interruption. Freeze the clock + chain via the same pause() the manual
+        // pause button uses, and surface the paused overlay so the player resumes deliberately on
+        // return (RootView.handleForeground stays a no-op while paused). Guarded on `.running` so
+        // we never stack on an already-open confirm/pause overlay or re-pause a finished round.
+        .onChange(of: scenePhase) { _, phase in
+            if phase != .active, game.runState == .running {
+                game.pause()
+                showPausedOverlay = true
+            }
         }
         .onAppear {
             game.configureFeedback(soundEnabled: soundEnabled, hapticsEnabled: hapticsEnabled)
@@ -258,40 +279,17 @@ struct GameView: View {
         HStack {
             footerLeading
 
-            Spacer()
+            Spacer(minLength: 12)
 
-            Button {
-                if game.mode == .daily {
-                    game.pause()
-                    showDailyRestartConfirm = true
-                } else {
-                    game.reshuffleBoard()
-                }
-            } label: {
-                Label(
-                    game.mode == .daily
-                        ? language.text("Restart", "다시")
-                        : language.text("New board", "새 보드"),
-                    systemImage: "arrow.clockwise"
-                )
-                    .font(.ppDisplay(14, weight: .semibold, language: language))
-                    .foregroundStyle(Color.ppInkGray.opacity(0.82))
+            if game.mode == .daily {
+                Label(language.text("One run", "한 번의 도전"), systemImage: "seal.fill")
+                    .font(.ppBody(12, weight: .heavy, language: language))
+                    .foregroundStyle(Color.ppMintText)
                     .lineLimit(1)
-                    .minimumScaleFactor(0.82)
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 8)
-                    .background(
-                        Capsule(style: .continuous)
-                            .fill(Color.ppCardCream)
-                            .overlay(
-                                Capsule(style: .continuous)
-                                    .stroke(Color.ppInkGray.opacity(0.07), lineWidth: 1)
-                            )
-                            .shadow(color: Color.ppInkGray.opacity(0.12), radius: 10, x: 0, y: 4)
-                    )
+                    .minimumScaleFactor(0.78)
             }
-            .buttonStyle(.plain)
         }
+        .frame(minHeight: 34)
         .padding(.horizontal, 6)
     }
 
@@ -333,6 +331,9 @@ private struct PausedOverlay: View {
     @Binding var soundEnabled: Bool
     @Binding var hapticsEnabled: Bool
     @Binding var colorAssist: Bool
+    let isDaily: Bool
+    let onNewBoard: () -> Void
+    let onRestartDaily: () -> Void
     let onResume: () -> Void
     let onQuit: () -> Void
 
@@ -355,6 +356,17 @@ private struct PausedOverlay: View {
                 }
                 .padding(.bottom, 6)
 
+                PausedUtilityButton(
+                    title: isDaily ? language.text("Restart Daily", "오늘 도전 다시") : language.text("New board", "새 보드"),
+                    detail: isDaily
+                        ? language.text("Forfeit this run", "현재 도전은 사라져요")
+                        : language.text("Keep score and time", "점수와 시간은 유지"),
+                    systemImage: "arrow.clockwise",
+                    tint: isDaily ? .ppSoftCoral : .ppMintText,
+                    action: isDaily ? onRestartDaily : onNewBoard
+                )
+                .padding(.bottom, 2)
+
                 PrimaryPopButton(language.text("Resume", "계속하기"), systemImage: "play.fill", action: onResume)
 
                 Button(action: onQuit) {
@@ -374,6 +386,58 @@ private struct PausedOverlay: View {
             .padding(28)
             .frame(maxWidth: 320)
         }
+    }
+}
+
+private struct PausedUtilityButton: View {
+    @Environment(\.appLanguage) private var language
+
+    let title: String
+    let detail: String
+    let systemImage: String
+    let tint: Color
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 12) {
+                Image(systemName: systemImage)
+                    .font(.system(size: 15, weight: .bold, design: .rounded))
+                    .foregroundStyle(tint)
+                    .frame(width: 30, height: 30)
+                    .background(Circle().fill(tint.opacity(0.16)))
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title)
+                        .font(.ppDisplay(15, weight: .semibold, language: language))
+                        .foregroundStyle(Color.ppInkGray)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.78)
+
+                    Text(detail)
+                        .font(.ppBody(11, weight: .medium, language: language))
+                        .foregroundStyle(Color.ppWarmGray)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.76)
+                }
+
+                Spacer(minLength: 8)
+            }
+            .padding(.horizontal, 14)
+            .frame(maxWidth: .infinity)
+            .frame(height: 54)
+            .background(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .fill(Color.ppCardCream)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 16, style: .continuous)
+                            .stroke(tint.opacity(0.16), lineWidth: 1)
+                    )
+            )
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(title)
+        .accessibilityHint(detail)
     }
 }
 

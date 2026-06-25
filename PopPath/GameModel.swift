@@ -170,7 +170,7 @@ enum AchievementCatalog {
         Achievement(id: "clear_2", title: "Board Sweeper", subtitle: "Clear 2 boards in one round", systemImage: "rectangle.grid.2x2.fill"),
         Achievement(id: "clear_4", title: "Sweep Master", subtitle: "Clear 4 boards in one round", systemImage: "square.grid.3x3.fill"),
         Achievement(id: "daily_first", title: "Daily Ritual", subtitle: "Finish a Daily Challenge", systemImage: "calendar"),
-        Achievement(id: "streak_3", title: "On a Roll", subtitle: "3-day Daily streak", systemImage: "flame"),
+        Achievement(id: "streak_3", title: "On a Roll", subtitle: "3-day Daily streak", systemImage: "flame.fill"),
         Achievement(id: "streak_7", title: "Week Warrior", subtitle: "7-day Daily streak", systemImage: "calendar.badge.checkmark"),
         Achievement(id: "ten_rounds", title: "Ten Runs", subtitle: "Finish 10 rounds", systemImage: "10.circle.fill"),
         Achievement(id: "fifty_rounds", title: "Half Century", subtitle: "Finish 50 rounds", systemImage: "50.circle.fill"),
@@ -280,8 +280,9 @@ struct RoundSummary: Identifiable, Equatable {
         shareText(language: .english)
     }
 
-    /// Placeholder store link appended to shares until the live App Store URL is known (I2).
-    static let shareURL = "https://apps.apple.com/app/poppath"
+    /// Live App Store URL appended to shares after App Store Connect provides the final ID.
+    /// Until then shares intentionally omit a link instead of leaking an unapproved URL.
+    static let shareURL: String? = nil
 
     func shareText(language: AppLanguage) -> String {
         let bestValue = mode == .daily ? (dailyBest ?? score) : best
@@ -289,24 +290,38 @@ struct RoundSummary: Identifiable, Equatable {
         if language == .korean {
             let koreanModeLabel = mode == .daily ? "오늘의 길 · \(friendlyDailyDate(language: .korean))" : "클래식"
             let koreanBestLabel = mode == .daily ? "오늘 최고" : "최고"
+            let practicePrefix = isPractice ? "연습 · " : ""
+            var lines = [
+                "PopPath \(practicePrefix)\(koreanModeLabel)",
+                "점수 \(score.formatted()) | \(koreanBestLabel) \(bestValue.formatted())",
+                "체인 x\(maxChain) | 길 열림 \(metrics.unlocks) | 싹쓸이 \(metrics.boardClears) | 정확도 \(metrics.accuracyPercent)%"
+            ]
 
-            return """
-            PopPath \(koreanModeLabel)
-            점수 \(score.formatted()) | \(koreanBestLabel) \(bestValue.formatted())
-            체인 x\(maxChain) | 길 열림 \(metrics.unlocks) | 싹쓸이 \(metrics.boardClears) | 정확도 \(metrics.accuracyPercent)%
-            PopPath 하러 가기: \(Self.shareURL)
-            """
+            if isPractice {
+                lines.insert("연습 판 — 기록 안 됨", at: 1)
+            }
+            if let shareURL = Self.shareURL {
+                lines.append("PopPath 하러 가기: \(shareURL)")
+            }
+            return lines.joined(separator: "\n")
         }
 
         let modeLabel = mode == .daily ? "Daily · \(friendlyDailyDate(language: .english))" : "Classic"
         let bestLabel = mode == .daily ? "Daily Best" : "Best"
+        let practicePrefix = isPractice ? "Practice · " : ""
+        var lines = [
+            "PopPath \(practicePrefix)\(modeLabel)",
+            "Score \(score.formatted()) | \(bestLabel) \(bestValue.formatted())",
+            "Chain x\(maxChain) | Unlocks \(metrics.unlocks) | Clears \(metrics.boardClears) | Accuracy \(metrics.accuracyPercent)%"
+        ]
 
-        return """
-        PopPath \(modeLabel)
-        Score \(score.formatted()) | \(bestLabel) \(bestValue.formatted())
-        Chain x\(maxChain) | Unlocks \(metrics.unlocks) | Clears \(metrics.boardClears) | Accuracy \(metrics.accuracyPercent)%
-        Play PopPath: \(Self.shareURL)
-        """
+        if isPractice {
+            lines.insert("Practice run — not recorded", at: 1)
+        }
+        if let shareURL = Self.shareURL {
+            lines.append("Play PopPath: \(shareURL)")
+        }
+        return lines.joined(separator: "\n")
     }
 
     /// Turns the raw `YYYYMMDD` daily id into a friendly localized date (EN "Jun 22",
@@ -639,7 +654,7 @@ final class GameModel: ObservableObject {
     /// metrics. Does not advance `boardDealIndex`, so a manual reshuffle never ramps
     /// difficulty.
     func reshuffleBoard() {
-        guard runState == .running else { return }
+        guard runState == .running || runState == .paused else { return }
         boardRefreshTask?.cancel()
         boardRefreshTask = nil
         toastTask?.cancel()
@@ -793,9 +808,11 @@ final class GameModel: ObservableObject {
         dailyBest = stored ?? 0
     }
 
-    /// Re-sync the wall clock after returning to the foreground: the clock kept running
-    /// while backgrounded (an explicit pause does not), so reflect the elapsed time and
-    /// finish if the deadline passed. Also picks up a Daily date rollover.
+    /// Re-sync the wall clock after returning to the foreground. GameView now pauses the round
+    /// when it leaves the foreground, so the common case returns paused and this is a no-op for
+    /// the timer (the guard below). It still runs as a safety net — if the pause was ever missed
+    /// the clock would have kept running, so reflect the elapsed time and finish if the deadline
+    /// passed — and it always picks up a Daily date rollover.
     func handleForeground() {
         refreshDailyIfDateChanged()
         guard runState == .running else { return }

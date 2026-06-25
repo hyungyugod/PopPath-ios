@@ -25,6 +25,7 @@
 		10A1A0182C23700000100001 /* Nunito-Bold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 10A1B0192C23700000100001 /* Nunito-Bold.ttf */; };
 		10A1A0192C23700000100001 /* Nunito-ExtraBold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 10A1B0202C23700000100001 /* Nunito-ExtraBold.ttf */; };
 		10A1A0202C23700000100001 /* Jua-Regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 10A1B0212C23700000100001 /* Jua-Regular.ttf */; };
+		10A1A0212C23700000100001 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 10A1B0232C23700000100001 /* PrivacyInfo.xcprivacy */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -60,6 +61,7 @@
 		10A1B0202C23700000100001 /* Nunito-ExtraBold.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Nunito-ExtraBold.ttf"; sourceTree = "<group>"; };
 		10A1B0212C23700000100001 /* Jua-Regular.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Jua-Regular.ttf"; sourceTree = "<group>"; };
 		10A1B0222C23700000100001 /* Jua-OFL.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "Jua-OFL.txt"; sourceTree = "<group>"; };
+		10A1B0232C23700000100001 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -95,6 +97,7 @@
 				10A1B0072C23700000100001 /* Assets.xcassets */,
 				10A1G0052C23700000100001 /* Fonts */,
 				10A1B0112C23700000100001 /* Info.plist */,
+				10A1B0232C23700000100001 /* PrivacyInfo.xcprivacy */,
 				10A1B0012C23700000100001 /* PopPathApp.swift */,
 				10A1B0022C23700000100001 /* DesignSystem.swift */,
 				10A1B0032C23700000100001 /* GameCore.swift */,
@@ -203,6 +206,7 @@
 			hasScannedForEncodings = 0;
 			knownRegions = (
 				en,
+				ko,
 				Base,
 			);
 			mainGroup = 10A1G0012C23700000100001;
@@ -222,6 +226,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				10A1A0072C23700000100001 /* Assets.xcassets in Resources */,
+				10A1A0212C23700000100001 /* PrivacyInfo.xcprivacy in Resources */,
 				10A1A0112C23700000100001 /* Fredoka-Regular.ttf in Resources */,
 				10A1A0122C23700000100001 /* Fredoka-Medium.ttf in Resources */,
 				10A1A0132C23700000100001 /* Fredoka-SemiBold.ttf in Resources */,

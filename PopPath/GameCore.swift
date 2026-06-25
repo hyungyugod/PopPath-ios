@@ -971,17 +971,38 @@ enum GameRules {
 
 /// Opt-in local Daily reminder (K3). Pure on-device `UserNotifications` — no server, account,
 /// or tracking. Enabling requests authorization and, if granted, schedules a single repeating
-/// 7pm notification; disabling cancels it. All calls are safe no-ops if authorization is denied.
+/// 7pm notification; disabling cancels it. Permission denial is reported so Settings can keep
+/// the toggle truthful instead of leaving an enabled-looking reminder with no scheduled alert.
 enum DailyReminder {
     static let identifier = "poppath.dailyReminder"
     static let storageKey = "dailyReminderEnabled"
 
-    static func enable(language: AppLanguage) {
+    static func enable(language: AppLanguage, onDenied: @escaping () -> Void = {}) {
         let center = UNUserNotificationCenter.current()
         center.requestAuthorization(options: [.alert, .sound, .badge]) { granted, _ in
-            guard granted else { return }
             // Authorization is async; the user may have toggled the reminder back off while
             // the prompt was up. Re-check the live setting on the main queue before scheduling.
+            DispatchQueue.main.async {
+                guard granted else {
+                    onDenied()
+                    return
+                }
+                guard UserDefaults.standard.bool(forKey: storageKey) else { return }
+                schedule(language: language)
+            }
+        }
+    }
+
+    static func reschedule(language: AppLanguage) {
+        guard UserDefaults.standard.bool(forKey: storageKey) else { return }
+
+        let center = UNUserNotificationCenter.current()
+        center.getNotificationSettings { settings in
+            let canSchedule = settings.authorizationStatus == .authorized
+                || settings.authorizationStatus == .provisional
+                || settings.authorizationStatus == .ephemeral
+            guard canSchedule else { return }
+
             DispatchQueue.main.async {
                 guard UserDefaults.standard.bool(forKey: storageKey) else { return }
                 schedule(language: language)
@@ -1178,11 +1199,9 @@ final class SoundEffects {
         guard !didConfigureAudioSession else { return }
 
         let session = AVAudioSession.sharedInstance()
-        // .playback (not .ambient) so enabled SFX still play with the silent switch on — a
-        // deliberate product decision; .mixWithOthers keeps the player's own music going (J1).
-        // Audio only ever plays when the in-app Sound toggle is on, so this never makes noise
-        // the user didn't ask for.
-        try? session.setCategory(.playback, options: [.mixWithOthers])
+        // .ambient respects the hardware silent switch while .mixWithOthers keeps the player's
+        // own music going. The in-app Sound toggle still gates every actual effect.
+        try? session.setCategory(.ambient, options: [.mixWithOthers])
         try? session.setActive(true)
         registerSessionObserversIfNeeded()
         didConfigureAudioSession = true

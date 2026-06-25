@@ -40,7 +40,7 @@ Description:
 
 PopPath is a calm, tactile puzzle about finding the next open arrow. Tap only the blocks whose arrows can escape the board, keep your chain alive, unlock new paths, and race the timer for a better score.
 
-Play a quick classic round anytime, return for the Daily Challenge to solve the same board again, collect achievements, and share your best runs from the result screen.
+Play a quick classic round anytime, return for the Daily Challenge to solve the same one-shot board as everyone else, collect achievements, and share your best runs from the result screen.
 
 No ads. No purchases. Just a polished little puzzle built for quick, satisfying sessions.
 
@@ -57,6 +57,7 @@ Completed locally:
 - App icon PNGs verified at required sizes with no alpha channel.
 - `xcodebuild build` passes for Debug simulator.
 - `xcodebuild build -configuration Release` passes for Release simulator.
+- Privacy manifest bundled with UserDefaults required-reason API coverage.
 - `xcodebuild test` passes on iPhone 17 simulator.
 - Codebase still contains no ads, in-app purchases, StoreKit purchase flow, or tracking SDK.
 

@@ -40,7 +40,7 @@ struct RootView: View {
     @AppStorage("colorAssist") private var colorAssist = false
     @AppStorage("reduceMotion") private var reduceMotion = false
     @AppStorage("dailyReminderEnabled") private var dailyReminderEnabled = false
-    @AppStorage("appLanguage") private var appLanguageRaw = AppLanguage.english.rawValue
+    @AppStorage("appLanguage") private var appLanguageRaw = AppLanguage.korean.rawValue
     @State private var showDailyDoneInfo = false
     @Environment(\.accessibilityReduceMotion) private var systemReduceMotion
     /// Effective reduce motion is the system setting OR the in-app toggle, derived once here
@@ -84,10 +84,16 @@ struct RootView: View {
         }
         .onChange(of: dailyReminderEnabled) { _, enabled in
             if enabled {
-                DailyReminder.enable(language: appLanguage)
+                DailyReminder.enable(language: appLanguage) {
+                    dailyReminderEnabled = false
+                }
             } else {
                 DailyReminder.disable()
             }
+        }
+        .onChange(of: appLanguageRaw) { _, _ in
+            guard dailyReminderEnabled else { return }
+            DailyReminder.reschedule(language: appLanguage)
         }
         .onChange(of: soundEnabled) { _, enabled in
             // Confirm the toggle with a short preview tone the moment sound is switched on (J5).
@@ -196,6 +202,13 @@ struct RootView: View {
             RecordsView(
                 stats: game.stats,
                 achievements: AchievementCatalog.all,
+                onPlay: {
+                    if hasSeenTutorial {
+                        startGame()
+                    } else {
+                        presentTutorial(context: .play(.classic))
+                    }
+                },
                 onBack: goHome
             )
             .onAppear { game.markAchievementsSeen() }
@@ -221,7 +234,7 @@ struct RootView: View {
     }
 
     private var appLanguage: AppLanguage {
-        AppLanguage(rawValue: appLanguageRaw) ?? .english
+        AppLanguage(rawValue: appLanguageRaw) ?? .korean
     }
 
     private var appLanguageBinding: Binding<AppLanguage> {
