@@ -86,43 +86,83 @@ extension Color {
     // A deeper red for the penalty *toast* background so white label text clears WCAG AA (≥4.5:1)
     // even at the 12pt title size; the brighter `ppPenaltyRed` above is only ever a blurred glow.
     static let ppPenaltyRedDeep = Color(hex: 0xCC3A3E)
+
+    /// Linear blend between two sRGB hex colors (`t` = 0 → `a`, 1 → `b`). Used for the tier board
+    /// surface so the result is a real *opaque* color — a translucent tint overlay would let the
+    /// grid's empty-cell gaps show through unevenly. Deployment target is iOS 17, so the iOS-18
+    /// `Color.mix(with:by:)` isn't available; this is the portable equivalent.
+    static func ppBlend(_ a: UInt, _ b: UInt, _ t: Double) -> Color {
+        let t = min(max(t, 0), 1)
+        func channel(_ hex: UInt, _ shift: UInt) -> Double { Double((hex >> shift) & 0xff) }
+        let r = channel(a, 16) * (1 - t) + channel(b, 16) * t
+        let g = channel(a, 8) * (1 - t) + channel(b, 8) * t
+        let blue = channel(a, 0) * (1 - t) + channel(b, 0) * t
+        return Color(.sRGB, red: r / 255, green: g / 255, blue: blue / 255, opacity: 1)
+    }
 }
 
 extension Grade {
+    /// The single signature hue per tier, as a raw hex so it can feed both `badgeColor` (a solid
+    /// medal) and the tier board theme's `ppBlend` (a real opaque surface). One source of truth so
+    /// the in-game tier accent and the rank badge can never drift apart.
+    var themeHex: UInt {
+        switch tier {
+        case 1:  return 0x875530 // Bronze
+        case 2:  return 0x59636E // Silver
+        case 3:  return 0xD9A520 // Gold (paired with dark ink)
+        case 4:  return 0x3E7186 // Platinum (cool steel-blue)
+        case 5:  return 0x1F7C55 // Emerald
+        case 6:  return 0x315CA8 // Sapphire
+        case 7:  return 0xC23B37 // Ruby
+        case 8:  return 0x227E8C // Diamond (deep teal-cyan)
+        case 9:  return 0x7857C2 // Master (amethyst)
+        case 10: return 0xB0368A // Grandmaster (magenta)
+        case 11: return 0xF0B90B // God of PopPath (radiant gold — paired with dark ink)
+        default: return 0x515A52 // Rookie (muted sage-gray)
+        }
+    }
+
     /// Medal/gem color for the tier's badge. Each is dark enough to clear WCAG AA (≥4.5:1) with
     /// the badge's white label (Gold is the exception — it stays bright and uses dark ink), so a
     /// rank chip honors the same contrast gate the rest of the app does (G5). Solid, never
     /// translucent, so the cream surface can't bleed through and lighten it.
-    var badgeColor: Color {
-        switch tier {
-        case 1:  return Color(hex: 0x875530) // Bronze
-        case 2:  return Color(hex: 0x59636E) // Silver
-        case 3:  return Color(hex: 0xD9A520) // Gold (paired with dark ink)
-        case 4:  return Color(hex: 0x3E7186) // Platinum (cool steel-blue)
-        case 5:  return Color(hex: 0x1F7C55) // Emerald
-        case 6:  return Color(hex: 0x315CA8) // Sapphire
-        case 7:  return Color(hex: 0xC23B37) // Ruby
-        case 8:  return Color(hex: 0x227E8C) // Diamond (deep teal-cyan)
-        case 9:  return Color(hex: 0x7857C2) // Master (amethyst)
-        case 10: return Color(hex: 0xB0368A) // Grandmaster (magenta)
-        default: return Color(hex: 0x515A52) // Rookie (muted sage-gray)
-        }
+    var badgeColor: Color { Color(hex: themeHex) }
+
+    /// How far the board surface is nudged from the calm base sage toward this tier's hue. Kept
+    /// small and capped so a richer rank reads as a warmer board WITHOUT hurting the dark-ink
+    /// arrows' contrast (the blocks are opaque on top, so only the gaps and empty cells tint).
+    /// Rookie stays pure sage — a brand-new player's board looks exactly as it always has.
+    var boardTintStrength: Double {
+        tier == 0 ? 0 : min(0.05 + Double(tier) * 0.009, 0.15)
     }
 
-    /// Foreground for the badge: white on the deeper tiers, dark ink on the bright Gold so the
-    /// label keeps a legible contrast on every medal.
+    /// The board's fill for this tier: the base sage (`0xDDEBE4`) blended toward the tier hue.
+    var boardSurface: Color {
+        Color.ppBlend(0xDDEBE4, themeHex, boardTintStrength)
+    }
+
+    /// Tint for the board's drop shadow / ambient glow. Rookie keeps the established calm mint so
+    /// nothing changes until the player actually ranks up.
+    var boardGlow: Color {
+        tier == 0 ? .ppMintText : badgeColor
+    }
+
+    /// Foreground for the badge: white on the deeper tiers, dark ink on the bright Gold and on the
+    /// radiant-gold God apex so the label keeps a legible contrast on every medal.
     var badgeTextColor: Color {
-        tier == 3 ? Color(hex: 0x3A2A08) : .white
+        tier == 3 || tier == 11 ? Color(hex: 0x3A2A08) : .white
     }
 
-    /// SF Symbol glyph: a leaf for Rookie, shields for the metals, gems for the mid tiers, and
-    /// a crown for the very top — so each band reads at a glance even without the label.
+    /// SF Symbol glyph: a leaf for Rookie, shields for the metals, gems for the mid tiers, a
+    /// crown for Grandmaster, and a radiant sun for the God of PopPath apex — so each band reads
+    /// at a glance even without the label.
     var badgeSymbol: String {
         switch tier {
         case 0: return "leaf.fill"
         case 1...4: return "shield.fill"
         case 5...8: return "diamond.fill"
         case 9: return "rosette"
+        case 11: return "sun.max.fill"
         default: return "crown.fill"
         }
     }

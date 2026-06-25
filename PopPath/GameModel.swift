@@ -982,8 +982,9 @@ final class GameModel: ObservableObject {
         let openBeforeRemoval = openPositions
         let blockID = block.id
         let nextChain = chain + 1
-        // The escaping visual is a plain pop sliding the flicked way (wild follows your flick);
-        // a bomb's spectacle is its detonation, handled below.
+        // The escaping visual now bursts in place (expand + fade); popDirection only sets which
+        // arrow glyph the popped block shows (wild follows your flick). A bomb's spectacle is its
+        // detonation, handled below.
         var poppedBlock = block
         poppedBlock.direction = popDirection
         poppedBlock.kind = .normal
@@ -1485,7 +1486,11 @@ final class GameModel: ObservableObject {
     private func emitFloatingScore(amount: Int, row: Int, column: Int, chain: Int) {
         let marker = FloatingScore(row: row, column: column, amount: amount, chain: chain)
         floatingScores.append(marker)
-        let maximumVisible = 6
+        // Each live "+N" marker re-evaluates its SwiftUI body every animation frame (its offset
+        // and opacity are derived from the marker's progress), so the cap is a direct rapid-fire
+        // perf lever. Trimmed 6 → 4: on a fast streak the markers blur together anyway, and fewer
+        // concurrent animations keeps the board smooth.
+        let maximumVisible = 4
         if floatingScores.count > maximumVisible {
             floatingScores.removeFirst(floatingScores.count - maximumVisible)
         }

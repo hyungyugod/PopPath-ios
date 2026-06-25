@@ -14,15 +14,28 @@ struct GameView: View {
     var startsPaused = false
     let onExit: () -> Void
 
-    @State private var showExitConfirm = false
     @State private var showDailyRestartConfirm = false
-    // The paused overlay is shown ONLY by the pause button. The exit / daily-restart
-    // confirms also freeze the clock via game.pause(), but must not surface this overlay
-    // (that would stack two modals), so they are gated on this flag, not on runState.
+    // The paused overlay is shown ONLY by the pause button. The daily-restart confirm also
+    // freezes the clock via game.pause(), but must not surface this overlay (that would stack
+    // two modals), so it is gated on this flag, not on runState. Quitting to Home now lives
+    // inside this overlay (the old separate Home button was redundant with it).
     @State private var showPausedOverlay = false
     @State private var didApplyInitialPause = false
     /// Drives the red screen-edge penalty flash on a wrong flick; pulsed by `missFlashToken`.
     @State private var missFlash: Double = 0
+
+    // Tier theming (driven purely from published score/best — no model/scoring changes). The
+    // board's surface, glow, and the HUD tier badge all read `currentGrade`; `displayedTier`
+    // tracks the last-rendered tier so crossing UP into a new one mid-run fires a one-shot
+    // flourish. Starts at -1 so the initial value is adopted on appear without celebrating.
+    @State private var displayedTier = -1
+    /// Non-nil briefly while the "new tier" flourish is on screen.
+    @State private var tierUpFlash: Grade?
+    /// Springs the HUD tier badge on a rank-up.
+    @State private var tierBadgePulse = false
+    /// The single owner of the flourish auto-dismiss timer, so a second rank-up cancels the
+    /// first's stale timer instead of letting it nil the newer celebration out early.
+    @State private var tierFlourishTask: Task<Void, Never>?
 
     var body: some View {
         VStack(spacing: 12) {
@@ -42,6 +55,7 @@ struct GameView: View {
                 floatingScores: game.floatingScores,
                 boardGeneration: game.boardGeneration,
                 boardModifier: game.currentModifier,
+                tierGrade: currentGrade,
                 colorAssist: colorAssist,
                 reduceMotion: reduceMotion,
                 onFlick: { row, column, direction in
@@ -91,28 +105,22 @@ struct GameView: View {
         .overlay {
             MissEdgeFlash(opacity: missFlash)
         }
+        // "New tier" flourish — a brief, non-interactive celebration when this run climbs into a
+        // rank above where it started. `allowsHitTesting(false)` (inside the view) means taps keep
+        // landing on the blocks underneath, so it never adds the input delay we just removed.
+        .overlay {
+            if let grade = tierUpFlash {
+                TierUpFlourish(grade: grade, reduceMotion: reduceMotion)
+                    .id(grade.tier)
+                    .transition(.opacity)
+            }
+        }
         .animation(.easeInOut(duration: reduceMotion ? 0 : 0.2), value: showPausedOverlay)
         .onAppear {
             guard startsPaused, !didApplyInitialPause else { return }
             didApplyInitialPause = true
             game.pause()
             showPausedOverlay = true
-        }
-        .confirmationDialog(
-            language.text("End run?", "그만할까요?"),
-            isPresented: $showExitConfirm,
-            titleVisibility: .visible
-        ) {
-            Button(language.text("End run", "그만하기"), role: .destructive) {
-                game.creditAndEndRun()
-                onExit()
-            }
-            Button(language.text("Keep playing", "계속하기"), role: .cancel) { }
-        } message: {
-            // A practice run records nothing, so don't promise to save the score (it isn't).
-            Text(game.isPractice
-                ? language.text("Practice run — nothing is recorded.", "연습 판이라 기록되지 않아요.")
-                : language.text("Your score so far will be saved.", "지금까지 점수는 저장돼요."))
         }
         .confirmationDialog(
             language.text("Restart today's challenge?", "오늘의 도전을 다시 할까요?"),
@@ -130,15 +138,22 @@ struct GameView: View {
         } message: {
             Text(language.text("This forfeits your current run.", "지금 진행 중인 판은 사라져요."))
         }
-        // Any dismissal of a confirm that didn't end / restart the run (cancel button OR an
-        // outside-tap that runs no button) must lift the clock-freeze, so the game can never
-        // get stuck paused with no visible overlay.
-        .onChange(of: showExitConfirm) { _, showing in
-            if !showing && game.runState == .paused { game.resume() }
-        }
+        // Any dismissal of a confirm that didn't restart the run (cancel button OR an outside-tap
+        // that runs no button) must lift the clock-freeze, so the game can never get stuck paused
+        // with no visible overlay.
         .onChange(of: showDailyRestartConfirm) { _, showing in
             if !showing && game.runState == .paused { game.resume() }
         }
+        // Adopt the starting tier silently (a Gold player's board opens Gold — that's not a
+        // "new tier" moment), then celebrate only genuine upward crossings during the run.
+        .onAppear { displayedTier = currentGrade.tier }
+        .onChange(of: currentGrade.tier) { _, newTier in
+            if displayedTier >= 0, newTier > displayedTier {
+                celebrateTierUp(currentGrade)
+            }
+            displayedTier = newTier
+        }
+        .onDisappear { tierFlourishTask?.cancel() }
         // Leaving the foreground mid-round (incoming call, Control/Notification Center, the app
         // switcher, or a full background) must not burn the 60s wall clock — that loses a whole
         // run to a single interruption. Freeze the clock + chain via the same pause() the manual
@@ -201,9 +216,49 @@ struct GameView: View {
         .animation(.spring(response: 0.24, dampingFraction: 0.75), value: game.boardToast?.id)
     }
 
-    private func requestExit() {
-        game.pause()
-        showExitConfirm = true
+    /// The tier driving the in-game theme. `max(best, score)` means the board always reflects at
+    /// least the player's *established* rank (the persistent theme), and climbs live the moment
+    /// this run's score passes a new threshold (the in-run evolution) — the two halves of the
+    /// "both" tier treatment, computed entirely from already-published values.
+    private var currentGrade: Grade {
+        let establishedBest = game.mode == .daily ? game.dailyBest : game.best
+        return Grade.forScore(max(establishedBest, game.score))
+    }
+
+    /// One-shot rank-up celebration: pulse the HUD badge, surface the flourish, speak it to
+    /// VoiceOver, then auto-dismiss. Purely presentational — no model state is touched.
+    private func celebrateTierUp(_ grade: Grade) {
+        // A practice run credits nothing, so it celebrates nothing — a "NEW TIER" moment +
+        // VoiceOver shout for a rank that won't be saved would be a lie (mirrors the model's
+        // surfaceLiveMilestones `!isPractice` guard). The ambient board tint still follows the
+        // live score; only the explicit celebration is suppressed.
+        guard !game.isPractice else { return }
+
+        if reduceMotion {
+            tierUpFlash = grade
+        } else {
+            withAnimation(.spring(response: 0.34, dampingFraction: 0.5)) { tierBadgePulse = true }
+            withAnimation(.easeOut(duration: 0.3)) { tierUpFlash = grade }
+        }
+        if UIAccessibility.isVoiceOverRunning {
+            UIAccessibility.post(
+                notification: .announcement,
+                argument: language.text("Reached \(grade.nameEN) tier", "\(grade.nameKO) 등급 달성")
+            )
+        }
+        // One owner for the auto-dismiss timer: cancel any in-flight flourish so a second rank-up
+        // within ~1.4s (the low tiers are only 5k apart) can't have its celebration nilled out
+        // early by the previous one's stale timer. Guard after each sleep so a cancelled timer
+        // makes no further mutations.
+        tierFlourishTask?.cancel()
+        tierFlourishTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 200_000_000)
+            guard !Task.isCancelled else { return }
+            withAnimation(.spring(response: 0.4, dampingFraction: 0.7)) { tierBadgePulse = false }
+            try? await Task.sleep(nanoseconds: 1_200_000_000)
+            guard !Task.isCancelled else { return }
+            withAnimation(.easeOut(duration: 0.4)) { tierUpFlash = nil }
+        }
     }
 
     // Live difficulty/level pip (K19), reading the WI-4.1 source of truth. Updates as the
@@ -235,24 +290,16 @@ struct GameView: View {
     }
 
     private var topBar: some View {
-        HStack(spacing: 10) {
-            Button(action: requestExit) {
-                Image(systemName: "house.fill")
-                    .font(.system(size: 15, weight: .bold, design: .rounded))
-                    .foregroundStyle(Color.ppInkGray.opacity(0.82))
-                    .frame(width: 36, height: 36)
-                    .background(
-                        Circle()
-                            .fill(Color.ppCardCream)
-                            .shadow(color: Color.ppInkGray.opacity(0.11), radius: 9, x: 0, y: 4)
-                    )
-                    .frame(width: 44, height: 44)
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel(language.text("Exit game", "게임 나가기"))
+        HStack(spacing: 8) {
+            // Leading: the live rank badge. It fills the slot the old Home button used to occupy
+            // (exit now lives inside the pause overlay), and turns that space into progression
+            // feedback — climbing tiers mid-run pulses it.
+            GradeBadge(grade: currentGrade, compact: true)
+                .scaleEffect(tierBadgePulse ? 1.16 : 1)
+                .animation(reduceMotion ? nil : .spring(response: 0.34, dampingFraction: 0.55), value: tierBadgePulse)
+                .animation(reduceMotion ? nil : .easeInOut(duration: 0.45), value: currentGrade.tier)
 
-            Spacer()
+            Spacer(minLength: 6)
 
             VStack(spacing: 3) {
                 difficultyPip
@@ -261,13 +308,15 @@ struct GameView: View {
                 }
             }
 
-            Spacer()
+            Spacer(minLength: 6)
 
+            // Single in-game control: pause → overlay (Resume / New board / Quit to Home). The
+            // separate Home button was removed — its job (quitting) is the overlay's Quit action.
             Button { game.pause(); showPausedOverlay = true } label: {
                 Image(systemName: "pause.fill")
-                    .font(.system(size: 15, weight: .bold, design: .rounded))
+                    .font(.system(size: 16, weight: .bold, design: .rounded))
                     .foregroundStyle(Color.ppInkGray.opacity(0.82))
-                    .frame(width: 36, height: 36)
+                    .frame(width: 38, height: 38)
                     .background(
                         Circle()
                             .fill(Color.ppCardCream)
@@ -278,6 +327,7 @@ struct GameView: View {
             }
             .buttonStyle(.plain)
             .accessibilityLabel(language.text("Pause", "일시정지"))
+            .accessibilityHint(language.text("Pause and open the menu", "일시정지하고 메뉴를 엽니다"))
         }
         .padding(.top, 10)
         .padding(.horizontal, 4)
@@ -698,6 +748,8 @@ private struct BoardView: View {
     let floatingScores: [FloatingScore]
     let boardGeneration: Int
     let boardModifier: BoardModifier
+    /// The rank theme for the board surface + glow (persistent best, climbing live this run).
+    let tierGrade: Grade
     let colorAssist: Bool
     let reduceMotion: Bool
     let onFlick: (Int, Int, Direction) -> Void
@@ -788,11 +840,24 @@ private struct BoardView: View {
                 .animation(reduceMotion ? nil : .easeInOut(duration: 0.24), value: boardGeneration)
                 .padding(boardPadding)
                 .frame(width: width)
+                // The board surface + glow carry the tier theme: the calm base sage warms toward
+                // the rank's hue as you climb (Rookie = unchanged). Opaque surface (not a tint
+                // overlay) so the empty-cell gaps never show through oddly; blocks sit on top, so
+                // the dark-ink arrows keep their contrast.
                 .background(
                     RoundedRectangle(cornerRadius: 24, style: .continuous)
-                        .fill(Color.ppSoftSage)
-                        .shadow(color: Color.ppMintText.opacity(0.1), radius: 8, x: 0, y: 2)
+                        .fill(tierGrade.boardSurface)
+                        // Rookie keeps the exact original shadow (0.10 / 8 / 2) so a brand-new
+                        // player's board is pixel-identical to before; ranked tiers get a slightly
+                        // richer, tier-tinted glow.
+                        .shadow(
+                            color: tierGrade.boardGlow.opacity(tierGrade.tier == 0 ? 0.10 : 0.16),
+                            radius: tierGrade.tier == 0 ? 8 : 9,
+                            x: 0,
+                            y: tierGrade.tier == 0 ? 2 : 3
+                        )
                 )
+                .animation(reduceMotion ? nil : .easeInOut(duration: 0.55), value: tierGrade.tier)
                 // A special board reads via a colored border + corner chip — no wash over the
                 // cells, so the arrows stay legible.
                 .overlay {
@@ -907,16 +972,19 @@ private struct EscapingBlockView: View {
     var body: some View {
         let visibleProgress = progress
         let burstLevel = min(CGFloat(max(escapingBlock.chain, 1)) / 6 + 0.32, 1.18)
-        let ringProgress = ppSmoothStep(ppUnit((visibleProgress - 0.04) / 0.66))
-        let tileOpacity = 1 - ppSmoothStep(ppUnit((visibleProgress - 0.32) / 0.6))
+        // The ring blooms quickly over the first half of the pop's life so it reads as the "팡".
+        let ringProgress = ppSmoothStep(ppUnit(visibleProgress / 0.62))
+        // Fade out a touch earlier than it scales so the cell looks clear almost immediately —
+        // rapid taps never see a lingering ghost.
+        let tileOpacity = 1 - ppSmoothStep(ppUnit((visibleProgress - 0.18) / 0.6))
 
         ZStack {
             // The ring + particle burst are motion; under reduce-motion the pop is confirmed
             // by a quick opacity fade (plus the +N marker and haptic) instead (F3).
             if !reduceMotion {
                 RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .stroke(burstColor.opacity(Double((1 - ringProgress) * 0.7)), lineWidth: 2 + burstLevel * 2)
-                    .scaleEffect(0.9 + ringProgress * (0.54 + burstLevel * 0.16))
+                    .stroke(burstColor.opacity(Double((1 - ringProgress) * 0.72)), lineWidth: 2 + burstLevel * 2)
+                    .scaleEffect(0.92 + ringProgress * (0.62 + burstLevel * 0.2))
                     .opacity(1 - ringProgress)
 
                 ForEach(0..<particleCount, id: \.self) { index in
@@ -925,7 +993,6 @@ private struct EscapingBlockView: View {
                         count: particleCount,
                         progress: visibleProgress,
                         cellSize: cellSize,
-                        direction: escapingBlock.block.direction,
                         tone: escapingBlock.block.tone,
                         burstColor: burstColor,
                         intensity: burstLevel
@@ -944,40 +1011,38 @@ private struct EscapingBlockView: View {
                 .font(.system(size: 18, weight: .bold, design: .rounded))
                 .symbolRenderingMode(.monochrome)
                 .foregroundStyle(Color.ppInkGray)
-                .rotationEffect(.degrees(reduceMotion ? 0 : arrowRotation(visibleProgress)))
         }
         .frame(width: cellSize, height: cellSize)
-        .offset(releaseOffset(progress: visibleProgress, burstLevel: burstLevel))
+        // Pops *in place* — no offset/slide. A quick outward expand + fade is the whole effect,
+        // so there is nothing to slide off the cell and nothing to wait for before the next tap.
         .scaleEffect(reduceMotion ? 1 : popScale(visibleProgress))
         .opacity(tileOpacity)
         .zIndex(20)
         .onAppear {
-            // In both modes `progress` animates 0→1; reduce-motion just skips the slide/scale/
+            // In both modes `progress` animates 0→1; reduce-motion just skips the scale/ring/
             // particles above and reads as a clean fade-out.
             let curve: Animation = reduceMotion
                 ? .easeOut(duration: escapingBlock.duration)
-                : .timingCurve(0.18, 0.82, 0.24, 1, duration: escapingBlock.duration)
+                : .timingCurve(0.2, 0.9, 0.3, 1, duration: escapingBlock.duration)
             withAnimation(curve) {
                 progress = 1
             }
         }
     }
 
-    private func pulseScale(_ value: CGFloat) -> CGFloat {
-        if value < 0.22 {
-            return 1 + ppEaseOutCubic(value / 0.22) * (0.16 + min(CGFloat(escapingBlock.chain), 6) * 0.01)
-        }
-
-        let shrinkProgress = ppSmoothStep(ppUnit((value - 0.22) / 0.78))
-        return 1.16 - shrinkProgress * 1.0
-    }
-
+    // Expand-and-fade in place: a fast outward punch (front-loaded by the ease-out so it reads as
+    // a snappy "burst", not a slow zoom) that grows past 1 while the tile fades. A longer chain
+    // punches a hair bigger for extra juice.
     private func popScale(_ value: CGFloat) -> CGFloat {
-        max(0.16, pulseScale(value))
+        let chainPunch = min(CGFloat(escapingBlock.chain), 6) * 0.02
+        return 1 + ppEaseOutCubic(value) * (0.32 + chainPunch)
     }
 
     private var particleCount: Int {
-        escapingBlock.chain >= 5 ? 5 : 4
+        // Each particle's offset is recomputed from `progress` every animation frame, so the
+        // particle count is effectively the per-frame SwiftUI body-eval cost of a pop. Trimmed
+        // (was 5/6) so rapid-fire popping — many bursts animating at once — stays smooth.
+        escapingBlock.chain >= 6 ? 5 : 4
     }
 
     private var burstColor: Color {
@@ -988,22 +1053,7 @@ private struct EscapingBlockView: View {
     // 0.58 peak and suppressed entirely under reduce-motion, so a fast chain never strobes.
     private func flashOpacity(_ value: CGFloat) -> Double {
         guard !reduceMotion else { return 0 }
-        return Double(max(0, 0.30 - value * 1.1))
-    }
-
-    private func arrowRotation(_ value: CGFloat) -> Double {
-        let direction: Double = escapingBlock.chain.isMultiple(of: 2) ? -1 : 1
-        return direction * Double(ppSmoothStep(ppUnit(value / 0.72))) * Double(min(escapingBlock.chain, 6)) * 3.0
-    }
-
-    private func releaseOffset(progress: CGFloat, burstLevel: CGFloat) -> CGSize {
-        guard !reduceMotion else { return .zero }
-
-        // Glide across more of the pop's life (0.85 vs 0.7) and travel further (≈0.55–0.8 of a
-        // cell), so the block reads as smoothly sliding out rather than a quick hop.
-        let slideProgress = ppEaseOutCubic(ppUnit(progress / 0.85))
-        let distance = cellSize * (0.55 + burstLevel * 0.22)
-        return escapingBlock.block.direction.vector.scaled(by: distance * slideProgress)
+        return Double(max(0, 0.32 - value * 1.2))
     }
 }
 
@@ -1016,8 +1066,10 @@ private struct FloatingScoreView: View {
         Text("+\(amount)")
             .font(.system(size: 15, weight: .heavy, design: .rounded))
             .monospacedDigit()
+            // Dark ink-green on the light pastel board reads cleanly WITHOUT a drop shadow; the
+            // shadow forced a per-marker offscreen pass and up to 6 of these animate at once on a
+            // fast streak, so dropping it is a direct rapid-fire perf win.
             .foregroundStyle(Color.ppMintButtonText)
-            .shadow(color: Color.ppWarmCream.opacity(0.85), radius: 2, x: 0, y: 1)
             .offset(y: reduceMotion ? -10 : -(8 + 34 * progress))
             .opacity(opacity)
             .scaleEffect(reduceMotion ? 1 : 0.7 + 0.5 * ppEaseOutCubic(ppUnit(progress / 0.4)))
@@ -1041,7 +1093,6 @@ private struct PopBurstParticle: View {
     let count: Int
     let progress: CGFloat
     let cellSize: CGFloat
-    let direction: Direction
     let tone: BlockTone
     let burstColor: Color
     let intensity: CGFloat
@@ -1051,22 +1102,21 @@ private struct PopBurstParticle: View {
         let travelProgress = ppEaseOutCubic(delayedProgress)
         let fadeProgress = ppSmoothStep(ppUnit((delayedProgress - 0.1) / 0.9))
         let offset = burstOffset(progress: travelProgress)
-        let size = particleSize * (1 - fadeProgress * 0.48)
+        let size = particleSize * (1 - fadeProgress * 0.5)
 
         Circle()
             .fill(particleColor.opacity(Double(1 - fadeProgress)))
             .frame(width: size, height: size)
             .offset(offset)
-            .scaleEffect(1 + (1 - fadeProgress) * 0.16)
             .opacity(delayedProgress > 0 ? 1 : 0)
     }
 
     private var delay: CGFloat {
-        CGFloat(index % 3) * 0.035
+        CGFloat(index % 3) * 0.03
     }
 
     private var particleSize: CGFloat {
-        cellSize * (0.09 + CGFloat(index % 3) * 0.018 + intensity * 0.018)
+        cellSize * (0.1 + CGFloat(index % 3) * 0.02 + intensity * 0.02)
     }
 
     private var particleColor: Color {
@@ -1082,32 +1132,14 @@ private struct PopBurstParticle: View {
         }
     }
 
+    // An even radial spray — particles fly out in every direction so the pop reads as bursting
+    // *in place* ("팡"), not spraying toward the old flick direction.
     private func burstOffset(progress: CGFloat) -> CGSize {
-        let angle = baseAngle + spreadAngle
-        let distance = cellSize * (0.34 + intensity * 0.18 + CGFloat(index % 4) * 0.035)
-        let wobble = sin(Double(progress) * .pi) * Double(cellSize * 0.08) * (index.isMultiple(of: 2) ? 1 : -1)
-        let x = cos(angle) * Double(distance) * Double(progress) + cos(angle + .pi / 2) * wobble
-        let y = sin(angle) * Double(distance) * Double(progress) + sin(angle + .pi / 2) * wobble
-
+        let angle = (Double(index) / Double(max(count, 1))) * 2 * .pi
+        let distance = cellSize * (0.36 + intensity * 0.2 + CGFloat(index % 3) * 0.04)
+        let x = cos(angle) * Double(distance) * Double(progress)
+        let y = sin(angle) * Double(distance) * Double(progress)
         return CGSize(width: CGFloat(x), height: CGFloat(y))
-    }
-
-    private var baseAngle: Double {
-        switch direction {
-        case .up:
-            return -.pi / 2
-        case .down:
-            return .pi / 2
-        case .left:
-            return .pi
-        case .right:
-            return 0
-        }
-    }
-
-    private var spreadAngle: Double {
-        let centeredIndex = Double(index) - Double(count - 1) / 2
-        return centeredIndex * 0.28
     }
 }
 
@@ -1333,6 +1365,43 @@ private struct MissEdgeFlash: View {
     }
 }
 
+/// A brief, non-interactive "new tier" celebration shown when a run climbs into a higher rank
+/// than it started in. Non-blocking (`allowsHitTesting(false)`) so rapid popping continues
+/// underneath, and a single spring-in / fade-out (no repeat) so it stays photosensitivity- and
+/// reduce-motion-safe. The rank-up is spoken to VoiceOver separately, so this is a11y-hidden.
+private struct TierUpFlourish: View {
+    @Environment(\.appLanguage) private var language
+    let grade: Grade
+    let reduceMotion: Bool
+    @State private var shown = false
+
+    var body: some View {
+        VStack(spacing: 8) {
+            Text(language.text("NEW TIER", "새 등급"))
+                .font(.ppBody(11, weight: .heavy, language: language))
+                .tracking(language == .korean ? 0 : 1.4)
+                .foregroundStyle(grade.badgeColor)
+            GradeBadge(grade: grade)
+        }
+        .padding(.horizontal, 22)
+        .padding(.vertical, 16)
+        .background(
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                .fill(Color.ppCardCream)
+                .shadow(color: grade.badgeColor.opacity(0.32), radius: 22, x: 0, y: 10)
+        )
+        .scaleEffect(reduceMotion ? 1 : (shown ? 1 : 0.72))
+        .opacity(shown ? 1 : 0)
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
+        .onAppear {
+            withAnimation(reduceMotion ? .easeOut(duration: 0.25) : .spring(response: 0.42, dampingFraction: 0.6)) {
+                shown = true
+            }
+        }
+    }
+}
+
 private struct ShakeEffect: GeometryEffect {
     var travelDistance: CGFloat = 4
     var shakes: CGFloat
@@ -1350,12 +1419,6 @@ private struct ShakeEffect: GeometryEffect {
     }
 }
 
-private extension CGSize {
-    func scaled(by amount: CGFloat) -> CGSize {
-        CGSize(width: width * amount, height: height * amount)
-    }
-}
-
 private extension BlockTone {
     // The particle burst still reads its tint by tone; routed through the shared `fillColor` so a
     // tone's color is defined exactly once (in DesignSystem).
@@ -1363,19 +1426,6 @@ private extension BlockTone {
 }
 
 private extension Direction {
-    var vector: CGSize {
-        switch self {
-        case .up:
-            return CGSize(width: 0, height: -1)
-        case .down:
-            return CGSize(width: 0, height: 1)
-        case .left:
-            return CGSize(width: -1, height: 0)
-        case .right:
-            return CGSize(width: 1, height: 0)
-        }
-    }
-
     var symbolName: String {
         switch self {
         case .up: "arrowtriangle.up.fill"

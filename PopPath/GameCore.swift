@@ -224,7 +224,9 @@ struct EscapingBlock: Identifiable, Equatable {
         startedAt: Date = .now,
         // Kept short so rapid chains do not leave many animated block layers stacked over the
         // board. The model still clears the cell immediately; this is visual confirmation only.
-        duration: TimeInterval = 0.18
+        // The pop now bursts in place (no slide), so a tighter window keeps consecutive taps
+        // feeling instant — fewer layers ever overlap.
+        duration: TimeInterval = 0.16
     ) {
         self.id = id
         self.block = block
@@ -236,12 +238,12 @@ struct EscapingBlock: Identifiable, Equatable {
     }
 }
 
-/// Score-based rank ladder: ten tiers starting at 5,000 points, then widening from the middle
-/// tiers until Grandmaster starts at 200,000 points.
+/// Score-based rank ladder: eleven tiers starting at 5,000 points, then widening through the
+/// middle until Grandmaster at 200,000 and a 300,000-point "God of PopPath" apex.
 /// Pure data — the tier's display color and badge glyph live in DesignSystem so this type
 /// stays SwiftUI-free, mirroring how `BlockTone` keeps its color out of GameCore.
 struct Grade: Equatable, Identifiable {
-    /// 0 = unranked (below the first threshold); 1...10 = the ranked tiers, lowest first.
+    /// 0 = unranked (below the first threshold); 1...11 = the ranked tiers, lowest first.
     let tier: Int
     let nameEN: String
     let nameKO: String
@@ -257,19 +259,20 @@ struct Grade: Equatable, Identifiable {
     /// Shown before the player has crossed the first 5,000-point threshold.
     static let rookie = Grade(tier: 0, nameEN: "Rookie", nameKO: "새내기", threshold: 0)
 
-    /// The ten ranked tiers, lowest first. Early ranks stay approachable; mid and late ranks
-    /// widen so the top tier is a long-term 200k chase.
+    /// The eleven ranked tiers, lowest first. Early ranks stay approachable; mid and late ranks
+    /// widen so Grandmaster (200k) is a long-term chase and "God of PopPath" (300k) is the apex.
     static let ranked: [Grade] = [
-        Grade(tier: 1,  nameEN: "Bronze",      nameKO: "브론즈",       threshold: 5_000),
-        Grade(tier: 2,  nameEN: "Silver",      nameKO: "실버",         threshold: 10_000),
-        Grade(tier: 3,  nameEN: "Gold",        nameKO: "골드",         threshold: 15_000),
-        Grade(tier: 4,  nameEN: "Platinum",    nameKO: "플래티넘",     threshold: 25_000),
-        Grade(tier: 5,  nameEN: "Emerald",     nameKO: "에메랄드",     threshold: 40_000),
-        Grade(tier: 6,  nameEN: "Sapphire",    nameKO: "사파이어",     threshold: 60_000),
-        Grade(tier: 7,  nameEN: "Ruby",        nameKO: "루비",         threshold: 85_000),
-        Grade(tier: 8,  nameEN: "Diamond",     nameKO: "다이아몬드",   threshold: 115_000),
-        Grade(tier: 9,  nameEN: "Master",      nameKO: "마스터",       threshold: 155_000),
-        Grade(tier: 10, nameEN: "Grandmaster", nameKO: "그랜드마스터", threshold: 200_000),
+        Grade(tier: 1,  nameEN: "Bronze",         nameKO: "브론즈",       threshold: 5_000),
+        Grade(tier: 2,  nameEN: "Silver",         nameKO: "실버",         threshold: 10_000),
+        Grade(tier: 3,  nameEN: "Gold",           nameKO: "골드",         threshold: 15_000),
+        Grade(tier: 4,  nameEN: "Platinum",       nameKO: "플래티넘",     threshold: 25_000),
+        Grade(tier: 5,  nameEN: "Emerald",        nameKO: "에메랄드",     threshold: 40_000),
+        Grade(tier: 6,  nameEN: "Sapphire",       nameKO: "사파이어",     threshold: 60_000),
+        Grade(tier: 7,  nameEN: "Ruby",           nameKO: "루비",         threshold: 85_000),
+        Grade(tier: 8,  nameEN: "Diamond",        nameKO: "다이아몬드",   threshold: 115_000),
+        Grade(tier: 9,  nameEN: "Master",         nameKO: "마스터",       threshold: 155_000),
+        Grade(tier: 10, nameEN: "Grandmaster",    nameKO: "그랜드마스터", threshold: 200_000),
+        Grade(tier: 11, nameEN: "God of PopPath", nameKO: "팝패스의 신",  threshold: 300_000),
     ]
 
     /// All tiers including unranked Rookie, lowest first.
@@ -280,7 +283,7 @@ struct Grade: Equatable, Identifiable {
         ranked.last(where: { score >= $0.threshold }) ?? rookie
     }
 
-    /// The next tier up, or nil once at the top (Grandmaster / Rookie has Bronze as next).
+    /// The next tier up, or nil once at the top (God of PopPath; Rookie has Bronze as next).
     var next: Grade? {
         Grade.ranked.first(where: { $0.tier == tier + 1 })
     }

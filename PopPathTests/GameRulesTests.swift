@@ -789,21 +789,24 @@ final class GameRulesTests: XCTestCase {
         XCTAssertEqual(Grade.forScore(10_000).tier, 2)     // Silver
         XCTAssertEqual(Grade.forScore(154_999).tier, 8)    // Diamond, one below Master
         XCTAssertEqual(Grade.forScore(155_000).tier, 9)    // Master
-        XCTAssertEqual(Grade.forScore(199_999).tier, 9)    // Master, one below the top gate
+        XCTAssertEqual(Grade.forScore(199_999).tier, 9)    // Master, one below Grandmaster
         XCTAssertEqual(Grade.forScore(200_000).tier, 10)   // Grandmaster
-        XCTAssertEqual(Grade.forScore(1_000_000).tier, 10) // never exceeds the top tier
+        XCTAssertEqual(Grade.forScore(299_999).tier, 10)   // Grandmaster, one below the apex gate
+        XCTAssertEqual(Grade.forScore(300_000).tier, 11)   // God of PopPath
+        XCTAssertEqual(Grade.forScore(1_000_000).tier, 11) // never exceeds the top tier
 
-        // Ten ranked tiers with a widening middle-to-late ladder ending at 200k.
-        XCTAssertEqual(Grade.ranked.count, 10)
+        // Eleven ranked tiers with a widening ladder ending at the 300k God of PopPath apex.
+        XCTAssertEqual(Grade.ranked.count, 11)
         XCTAssertEqual(
             Grade.ranked.map(\.threshold),
-            [5_000, 10_000, 15_000, 25_000, 40_000, 60_000, 85_000, 115_000, 155_000, 200_000]
+            [5_000, 10_000, 15_000, 25_000, 40_000, 60_000, 85_000, 115_000, 155_000, 200_000, 300_000]
         )
 
-        // Progress-to-next reads off the live score; the top tier reports none.
+        // Progress-to-next reads off the live score; only the apex (God of PopPath) reports none.
         XCTAssertEqual(Grade.forScore(7_000).pointsToNext(from: 7_000), 3_000) // Bronze → Silver at 10k
         XCTAssertEqual(Grade.forScore(160_000).pointsToNext(from: 160_000), 40_000) // Master → Grandmaster
-        XCTAssertNil(Grade.forScore(200_000).pointsToNext(from: 200_000))
+        XCTAssertEqual(Grade.forScore(200_000).pointsToNext(from: 200_000), 100_000) // Grandmaster → God at 300k
+        XCTAssertNil(Grade.forScore(300_000).pointsToNext(from: 300_000))
     }
 
     @MainActor
