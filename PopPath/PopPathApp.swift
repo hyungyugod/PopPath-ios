@@ -51,12 +51,20 @@ struct RootView: View {
     @State private var handledLaunchArguments = false
     #endif
 
-    /// Largest the portrait play column is allowed to grow. Past a large phone (~440×932) the
-    /// extra space becomes centered cream margin on iPad rather than oversized blocks, a stretched
-    /// HUD, or content pinned to the top of a very tall screen. Every iPhone is within this box so
-    /// the cap is a no-op there; only iPad (and the rare huge width) gets the centered column.
-    private static let maxContentWidth: CGFloat = 540
-    private static let maxContentHeight: CGFloat = 960
+    /// Largest the portrait column is allowed to grow, centered on the warm-cream background past
+    /// a large phone (~440×932) — on iPad the extra space would otherwise be wasted margin or a
+    /// top-pinned phone layout. Every iPhone is inside the smaller box, so the cap is a no-op
+    /// there; only iPad gets the centered column.
+    ///
+    /// Board-centric screens (the game, the tutorial board) fill wide — a big board reads well and
+    /// is nicer to tap. Menu/text screens stay narrower so low-density cards and copy don't stretch
+    /// into sparse full-width bars.
+    private var contentMaxSize: CGSize {
+        switch route {
+        case .game, .tutorial: return CGSize(width: 760, height: 1180)
+        default: return CGSize(width: 620, height: 1000)
+        }
+    }
 
     var body: some View {
         ZStack {
@@ -70,7 +78,7 @@ struct RootView: View {
                 // past a large phone) cap the content and center it on the warm background so it
                 // reads as a deliberate layout instead of a stretched phone — every screen lives
                 // inside `currentScreen`, so one cap covers Home/Game/Result/Records/Settings.
-                .frame(maxWidth: Self.maxContentWidth, maxHeight: Self.maxContentHeight)
+                .frame(maxWidth: contentMaxSize.width, maxHeight: contentMaxSize.height)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .preferredColorScheme(.light)
