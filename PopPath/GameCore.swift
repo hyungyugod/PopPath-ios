@@ -222,9 +222,9 @@ struct EscapingBlock: Identifiable, Equatable {
         column: Int,
         chain: Int = 1,
         startedAt: Date = .now,
-        // A touch longer than the old 0.18 so a popped block glides out smoothly ("슥슥") instead
-        // of snapping away; paired with a longer slide distance + gentler easing in the view.
-        duration: TimeInterval = 0.26
+        // Kept short so rapid chains do not leave many animated block layers stacked over the
+        // board. The model still clears the cell immediately; this is visual confirmation only.
+        duration: TimeInterval = 0.18
     ) {
         self.id = id
         self.block = block
@@ -236,8 +236,8 @@ struct EscapingBlock: Identifiable, Equatable {
     }
 }
 
-/// Score-based rank ladder: ten tiers starting at 5,000 points and rising in 5,000-point
-/// steps (Bronze → Grandmaster), plus an unranked "Rookie" state below the first threshold.
+/// Score-based rank ladder: ten tiers starting at 5,000 points, then widening from the middle
+/// tiers until Grandmaster starts at 200,000 points.
 /// Pure data — the tier's display color and badge glyph live in DesignSystem so this type
 /// stays SwiftUI-free, mirroring how `BlockTone` keeps its color out of GameCore.
 struct Grade: Equatable, Identifiable {
@@ -257,20 +257,19 @@ struct Grade: Equatable, Identifiable {
     /// Shown before the player has crossed the first 5,000-point threshold.
     static let rookie = Grade(tier: 0, nameEN: "Rookie", nameKO: "새내기", threshold: 0)
 
-    /// The ten ranked tiers, lowest first. Thresholds start at 5,000 and rise in 5,000-point
-    /// steps (5k, 10k, … 50k) — lowered from the original 10k floor so the ladder is more
-    /// reachable.
+    /// The ten ranked tiers, lowest first. Early ranks stay approachable; mid and late ranks
+    /// widen so the top tier is a long-term 200k chase.
     static let ranked: [Grade] = [
         Grade(tier: 1,  nameEN: "Bronze",      nameKO: "브론즈",       threshold: 5_000),
         Grade(tier: 2,  nameEN: "Silver",      nameKO: "실버",         threshold: 10_000),
         Grade(tier: 3,  nameEN: "Gold",        nameKO: "골드",         threshold: 15_000),
-        Grade(tier: 4,  nameEN: "Platinum",    nameKO: "플래티넘",     threshold: 20_000),
-        Grade(tier: 5,  nameEN: "Emerald",     nameKO: "에메랄드",     threshold: 25_000),
-        Grade(tier: 6,  nameEN: "Sapphire",    nameKO: "사파이어",     threshold: 30_000),
-        Grade(tier: 7,  nameEN: "Ruby",        nameKO: "루비",         threshold: 35_000),
-        Grade(tier: 8,  nameEN: "Diamond",     nameKO: "다이아몬드",   threshold: 40_000),
-        Grade(tier: 9,  nameEN: "Master",      nameKO: "마스터",       threshold: 45_000),
-        Grade(tier: 10, nameEN: "Grandmaster", nameKO: "그랜드마스터", threshold: 50_000),
+        Grade(tier: 4,  nameEN: "Platinum",    nameKO: "플래티넘",     threshold: 25_000),
+        Grade(tier: 5,  nameEN: "Emerald",     nameKO: "에메랄드",     threshold: 40_000),
+        Grade(tier: 6,  nameEN: "Sapphire",    nameKO: "사파이어",     threshold: 60_000),
+        Grade(tier: 7,  nameEN: "Ruby",        nameKO: "루비",         threshold: 85_000),
+        Grade(tier: 8,  nameEN: "Diamond",     nameKO: "다이아몬드",   threshold: 115_000),
+        Grade(tier: 9,  nameEN: "Master",      nameKO: "마스터",       threshold: 155_000),
+        Grade(tier: 10, nameEN: "Grandmaster", nameKO: "그랜드마스터", threshold: 200_000),
     ]
 
     /// All tiers including unranked Rookie, lowest first.

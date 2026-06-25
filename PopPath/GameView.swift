@@ -11,6 +11,7 @@ struct GameView: View {
     @Binding var hapticsEnabled: Bool
     @Binding var colorAssist: Bool
     let reduceMotion: Bool
+    var startsPaused = false
     let onExit: () -> Void
 
     @State private var showExitConfirm = false
@@ -19,6 +20,7 @@ struct GameView: View {
     // confirms also freeze the clock via game.pause(), but must not surface this overlay
     // (that would stack two modals), so they are gated on this flag, not on runState.
     @State private var showPausedOverlay = false
+    @State private var didApplyInitialPause = false
     /// Drives the red screen-edge penalty flash on a wrong flick; pulsed by `missFlashToken`.
     @State private var missFlash: Double = 0
 
@@ -90,6 +92,12 @@ struct GameView: View {
             MissEdgeFlash(opacity: missFlash)
         }
         .animation(.easeInOut(duration: reduceMotion ? 0 : 0.2), value: showPausedOverlay)
+        .onAppear {
+            guard startsPaused, !didApplyInitialPause else { return }
+            didApplyInitialPause = true
+            game.pause()
+            showPausedOverlay = true
+        }
         .confirmationDialog(
             language.text("End run?", "그만할까요?"),
             isPresented: $showExitConfirm,
@@ -943,7 +951,6 @@ private struct EscapingBlockView: View {
         .scaleEffect(reduceMotion ? 1 : popScale(visibleProgress))
         .opacity(tileOpacity)
         .zIndex(20)
-        .compositingGroup()
         .onAppear {
             // In both modes `progress` animates 0→1; reduce-motion just skips the slide/scale/
             // particles above and reads as a clean fade-out.
@@ -970,7 +977,7 @@ private struct EscapingBlockView: View {
     }
 
     private var particleCount: Int {
-        escapingBlock.chain >= 5 ? 7 : 6
+        escapingBlock.chain >= 5 ? 5 : 4
     }
 
     private var burstColor: Color {
@@ -1015,7 +1022,7 @@ private struct FloatingScoreView: View {
             .opacity(opacity)
             .scaleEffect(reduceMotion ? 1 : 0.7 + 0.5 * ppEaseOutCubic(ppUnit(progress / 0.4)))
             .onAppear {
-                withAnimation(.easeOut(duration: 0.62)) {
+                withAnimation(.easeOut(duration: 0.5)) {
                     progress = 1
                 }
             }
@@ -1145,14 +1152,14 @@ private struct BoardCell: View {
                 blockView(block)
                     .transition(.identity)
             } else {
-                // The empty slot fades in gently as the block clears (F8), honoring reduce motion.
+                // The empty slot appears quickly as the block clears, keeping fast taps crisp.
                 RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
                     .fill(Color.ppInkGray.opacity(0.035))
                     .transition(.opacity)
             }
         }
         .frame(width: side, height: side)
-        .animation(reduceMotion ? nil : .easeOut(duration: 0.22), value: block == nil)
+        .animation(reduceMotion ? nil : .easeOut(duration: 0.1), value: block == nil)
         .scaleEffect(pressScale)
         .animation(reduceMotion ? nil : .spring(response: 0.28, dampingFraction: 0.72), value: isPressed)
         .modifier(BoardCellAccessibility(

@@ -61,15 +61,24 @@ Completed locally:
 - `xcodebuild test` passes on iPhone 17 simulator.
 - Codebase still contains no ads, in-app purchases, StoreKit purchase flow, or tracking SDK.
 - Universal iPhone + iPad target (`TARGETED_DEVICE_FAMILY = 1,2`), portrait-locked on
-  both, with the play column capped and centered on iPad so it reads as a designed
-  layout. Verified on iPhone 17, iPad mini, and iPad Pro 13".
+  iPhone and all four orientations on iPad. `UIRequiresFullScreen` is not set, so the
+  iPad build is ready for multitasking / resizable-window expectations. Verified on
+  iPhone 17, iPad mini, iPad Pro 13", and iPad Pro 13" landscape.
+- `PopPath` has a shared Xcode scheme under `xcshareddata/xcschemes`, so fresh clones
+  and CI can discover the app/test scheme without relying on local user data.
 - `ITSAppUsesNonExemptEncryption = NO` set so uploads skip the export-compliance prompt.
 - Korean declared in `CFBundleLocalizations` + `knownRegions` so the store lists ko.
+- App Store screenshot sets captured under `app-store-assets/screenshots-2026-06-25/`
+  for 6.9" iPhone (`1320x2868`) and 13" iPad (`2064x2752`), with 10 distinct screens
+  per device set.
+- App Store Connect metadata, review notes, privacy answers, and Notion-ready privacy /
+  support page drafts prepared under `app-store-assets/app-store-connect/`.
 
 Remaining owner-side App Store Connect tasks:
 
 - Set Apple Developer Team/signing account for device archive and upload.
-- Capture and approve final App Store screenshots — now required for BOTH iPhone and
-  iPad (a 12.9"/13" iPad set is mandatory once the binary advertises iPad support).
-- Confirm App Privacy answers: no tracking and no data collection.
+- Approve/upload the prepared iPhone and iPad screenshots.
+- Publish the Notion privacy/support pages after reconnecting Notion, then paste the
+  public URLs into App Store Connect.
+- Replace the support email placeholder in the privacy/support pages.
 - Confirm age rating remains suitable for all ages.

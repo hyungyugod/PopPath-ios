@@ -158,24 +158,53 @@ enum AchievementCatalog {
     // horizon, cumulative, and streak milestones added (K8) plus an accuracy stake (E7).
     static let all: [Achievement] = [
         Achievement(id: "first_run", title: "First Swipe", subtitle: "Finish a round", systemImage: "flag.fill"),
+        Achievement(id: "first_clear", title: "First Clear", subtitle: "Clear a board", systemImage: "sparkle"),
         Achievement(id: "score_500", title: "Warmed Up", subtitle: "Score 500+", systemImage: "flame.fill"),
         Achievement(id: "score_1000", title: "Path Master", subtitle: "Score 1,000+", systemImage: "star.fill"),
         Achievement(id: "score_2000", title: "Path Legend", subtitle: "Score 2,000+", systemImage: "star.circle.fill"),
+        Achievement(id: "score_5000", title: "Bronze Breakthrough", subtitle: "Score 5,000+", systemImage: "medal.fill"),
+        Achievement(id: "score_10000", title: "Silver Surge", subtitle: "Score 10,000+", systemImage: "crown.fill"),
+        Achievement(id: "score_25000", title: "Gold Rush", subtitle: "Score 25,000+", systemImage: "star.square.fill"),
+        Achievement(id: "score_50000", title: "Diamond Climb", subtitle: "Score 50,000+", systemImage: "diamond.fill"),
+        Achievement(id: "score_100000", title: "Six-Figure Run", subtitle: "Score 100,000+", systemImage: "chart.line.uptrend.xyaxis"),
+        Achievement(id: "score_200000", title: "Grandmaster Run", subtitle: "Score 200,000+", systemImage: "trophy.fill"),
         Achievement(id: "chain_5", title: "Clean Chain", subtitle: "Reach chain x5", systemImage: "link"),
         Achievement(id: "chain_10", title: "Flow State", subtitle: "Reach chain x10", systemImage: "sparkles"),
+        Achievement(id: "chain_15", title: "Chainstorm", subtitle: "Reach chain x15", systemImage: "bolt.circle.fill"),
+        Achievement(id: "chain_20", title: "Endless Flow", subtitle: "Reach chain x20", systemImage: "infinity"),
         Achievement(id: "clean_run", title: "No Misses", subtitle: "Finish with no misses", systemImage: "checkmark.seal.fill"),
         Achievement(id: "sharp_run", title: "Sharpshooter", subtitle: "Finish at 95%+ accuracy", systemImage: "scope"),
+        Achievement(id: "flawless_30", title: "Flawless Flow", subtitle: "Pop 30+ with no misses", systemImage: "shield.fill"),
         Achievement(id: "unlock_5", title: "Key Finder", subtitle: "Open 5 paths in one round", systemImage: "key.fill"),
+        Achievement(id: "unlock_10", title: "Master Key", subtitle: "Open 10 paths in one round", systemImage: "key.fill"),
         Achievement(id: "path_burst", title: "Path Burst", subtitle: "Open 3 paths with one swipe", systemImage: "bolt.fill"),
+        Achievement(id: "path_burst_5", title: "Lane Explosion", subtitle: "Open 5 paths with one swipe", systemImage: "bolt.circle.fill"),
+        Achievement(id: "pops_40", title: "Swipe Storm", subtitle: "Pop 40 blocks in one round", systemImage: "hand.draw.fill"),
+        Achievement(id: "pops_60", title: "Minute Machine", subtitle: "Pop 60 blocks in one round", systemImage: "timer"),
         Achievement(id: "clear_2", title: "Board Sweeper", subtitle: "Clear 2 boards in one round", systemImage: "rectangle.grid.2x2.fill"),
         Achievement(id: "clear_4", title: "Sweep Master", subtitle: "Clear 4 boards in one round", systemImage: "square.grid.3x3.fill"),
+        Achievement(id: "clear_6", title: "Table Cleaner", subtitle: "Clear 6 boards in one round", systemImage: "trophy.fill"),
         Achievement(id: "daily_first", title: "Daily Ritual", subtitle: "Finish a Daily Challenge", systemImage: "calendar"),
+        Achievement(id: "daily_score_1000", title: "Daily Spark", subtitle: "Score 1,000+ in Daily", systemImage: "calendar.circle.fill"),
+        Achievement(id: "daily_score_2000", title: "Daily Champion", subtitle: "Score 2,000+ in Daily", systemImage: "calendar.badge.checkmark"),
+        Achievement(id: "daily_5", title: "Five Dailies", subtitle: "Finish 5 Daily Challenges", systemImage: "5.circle.fill"),
+        Achievement(id: "daily_20", title: "Daily Devotee", subtitle: "Finish 20 Daily Challenges", systemImage: "20.circle.fill"),
         Achievement(id: "streak_3", title: "On a Roll", subtitle: "3-day Daily streak", systemImage: "flame.fill"),
         Achievement(id: "streak_7", title: "Week Warrior", subtitle: "7-day Daily streak", systemImage: "calendar.badge.checkmark"),
+        Achievement(id: "streak_14", title: "Two-Week Trail", subtitle: "14-day Daily streak", systemImage: "flame.circle.fill"),
+        Achievement(id: "streak_30", title: "Monthly Flame", subtitle: "30-day Daily streak", systemImage: "flame.circle"),
         Achievement(id: "ten_rounds", title: "Ten Runs", subtitle: "Finish 10 rounds", systemImage: "10.circle.fill"),
+        Achievement(id: "classic_25", title: "Classic Regular", subtitle: "Finish 25 Classic rounds", systemImage: "25.circle.fill"),
         Achievement(id: "fifty_rounds", title: "Half Century", subtitle: "Finish 50 rounds", systemImage: "50.circle.fill"),
+        Achievement(id: "hundred_rounds", title: "Century Club", subtitle: "Finish 100 rounds", systemImage: "flag.2.crossed.fill"),
         Achievement(id: "hundred_pops", title: "Hundred Swipes", subtitle: "Swipe 100 blocks", systemImage: "circle.grid.cross.fill"),
-        Achievement(id: "total_25k", title: "Marathoner", subtitle: "Score 25,000 lifetime", systemImage: "infinity.circle.fill")
+        Achievement(id: "five_hundred_pops", title: "Five Hundred Pops", subtitle: "Swipe 500 blocks", systemImage: "hand.raised.fill"),
+        Achievement(id: "thousand_pops", title: "Thousand Pops", subtitle: "Swipe 1,000 blocks", systemImage: "sparkles"),
+        Achievement(id: "total_clears_25", title: "Clear Collector", subtitle: "Clear 25 boards lifetime", systemImage: "square.grid.3x3.fill"),
+        Achievement(id: "total_unlocks_250", title: "Path Architect", subtitle: "Open 250 paths lifetime", systemImage: "key.fill"),
+        Achievement(id: "total_25k", title: "Marathoner", subtitle: "Score 25,000 lifetime", systemImage: "infinity.circle.fill"),
+        Achievement(id: "total_100k", title: "Six-Figure Path", subtitle: "Score 100,000 lifetime", systemImage: "sum"),
+        Achievement(id: "total_250k", title: "PopPath Pro", subtitle: "Score 250,000 lifetime", systemImage: "chart.line.uptrend.xyaxis")
     ]
 
     /// Achievements that can be judged from the live round state alone (monotonic during a
@@ -186,12 +215,25 @@ enum AchievementCatalog {
             score >= 500 ? "score_500" : nil,
             score >= 1_000 ? "score_1000" : nil,
             score >= 2_000 ? "score_2000" : nil,
+            score >= 5_000 ? "score_5000" : nil,
+            score >= 10_000 ? "score_10000" : nil,
+            score >= 25_000 ? "score_25000" : nil,
+            score >= 50_000 ? "score_50000" : nil,
+            score >= 100_000 ? "score_100000" : nil,
+            score >= 200_000 ? "score_200000" : nil,
             maxChain >= 5 ? "chain_5" : nil,
             maxChain >= 10 ? "chain_10" : nil,
+            maxChain >= 15 ? "chain_15" : nil,
+            maxChain >= 20 ? "chain_20" : nil,
             metrics.unlocks >= 5 ? "unlock_5" : nil,
+            metrics.unlocks >= 10 ? "unlock_10" : nil,
             metrics.bestUnlockBurst >= 3 ? "path_burst" : nil,
+            metrics.bestUnlockBurst >= 5 ? "path_burst_5" : nil,
+            metrics.pops >= 40 ? "pops_40" : nil,
+            metrics.pops >= 60 ? "pops_60" : nil,
             metrics.boardClears >= 2 ? "clear_2" : nil,
-            metrics.boardClears >= 4 ? "clear_4" : nil
+            metrics.boardClears >= 4 ? "clear_4" : nil,
+            metrics.boardClears >= 6 ? "clear_6" : nil
         ].compactMap { $0 }
     }
 
@@ -205,24 +247,53 @@ enum AchievementCatalog {
     ) -> [Achievement] {
         let qualifyingIDs = Set([
             updatedStats.roundsPlayed >= 1 ? "first_run" : nil,
+            metrics.boardClears >= 1 ? "first_clear" : nil,
             score >= 500 ? "score_500" : nil,
             score >= 1_000 ? "score_1000" : nil,
             score >= 2_000 ? "score_2000" : nil,
+            score >= 5_000 ? "score_5000" : nil,
+            score >= 10_000 ? "score_10000" : nil,
+            score >= 25_000 ? "score_25000" : nil,
+            score >= 50_000 ? "score_50000" : nil,
+            score >= 100_000 ? "score_100000" : nil,
+            score >= 200_000 ? "score_200000" : nil,
             maxChain >= 5 ? "chain_5" : nil,
             maxChain >= 10 ? "chain_10" : nil,
+            maxChain >= 15 ? "chain_15" : nil,
+            maxChain >= 20 ? "chain_20" : nil,
             metrics.misses == 0 && metrics.pops >= 12 ? "clean_run" : nil,
             metrics.accuracyPercent >= 95 && metrics.pops >= 20 ? "sharp_run" : nil,
+            metrics.misses == 0 && metrics.pops >= 30 ? "flawless_30" : nil,
             metrics.unlocks >= 5 ? "unlock_5" : nil,
+            metrics.unlocks >= 10 ? "unlock_10" : nil,
             metrics.bestUnlockBurst >= 3 ? "path_burst" : nil,
+            metrics.bestUnlockBurst >= 5 ? "path_burst_5" : nil,
+            metrics.pops >= 40 ? "pops_40" : nil,
+            metrics.pops >= 60 ? "pops_60" : nil,
             metrics.boardClears >= 2 ? "clear_2" : nil,
             metrics.boardClears >= 4 ? "clear_4" : nil,
+            metrics.boardClears >= 6 ? "clear_6" : nil,
             mode == .daily ? "daily_first" : nil,
+            mode == .daily && score >= 1_000 ? "daily_score_1000" : nil,
+            mode == .daily && score >= 2_000 ? "daily_score_2000" : nil,
+            updatedStats.dailyRounds >= 5 ? "daily_5" : nil,
+            updatedStats.dailyRounds >= 20 ? "daily_20" : nil,
             updatedStats.currentStreak >= 3 ? "streak_3" : nil,
             updatedStats.currentStreak >= 7 ? "streak_7" : nil,
+            updatedStats.currentStreak >= 14 ? "streak_14" : nil,
+            updatedStats.currentStreak >= 30 ? "streak_30" : nil,
             updatedStats.roundsPlayed >= 10 ? "ten_rounds" : nil,
+            updatedStats.classicRounds >= 25 ? "classic_25" : nil,
             updatedStats.roundsPlayed >= 50 ? "fifty_rounds" : nil,
+            updatedStats.roundsPlayed >= 100 ? "hundred_rounds" : nil,
             updatedStats.totalPops >= 100 ? "hundred_pops" : nil,
-            updatedStats.totalScore >= 25_000 ? "total_25k" : nil
+            updatedStats.totalPops >= 500 ? "five_hundred_pops" : nil,
+            updatedStats.totalPops >= 1_000 ? "thousand_pops" : nil,
+            updatedStats.totalBoardClears >= 25 ? "total_clears_25" : nil,
+            updatedStats.totalUnlocks >= 250 ? "total_unlocks_250" : nil,
+            updatedStats.totalScore >= 25_000 ? "total_25k" : nil,
+            updatedStats.totalScore >= 100_000 ? "total_100k" : nil,
+            updatedStats.totalScore >= 250_000 ? "total_250k" : nil
         ].compactMap { $0 })
 
         return all.filter { achievement in
@@ -524,9 +595,9 @@ final class GameModel: ObservableObject {
     private let now: () -> Date
     /// Seconds a miss shaves off the round deadline (E2).
     private let missTimePenalty: TimeInterval = 2
-    /// Points a wrong flick deducts (clamped at 0), so a mistake stings a little beyond the
-    /// chain break and clock hit — half a base pop, kept small ("조금 깎아줘").
-    private let missScorePenalty = 5
+    /// Points a wrong flick deducts (clamped at 0). This needs to register as a real mistake
+    /// on top of the chain break and clock hit, without ever sending a low score negative.
+    private let missScorePenalty = 30
     /// Consolation points per block stranded when the board gets stuck (D6).
     private let strandedBlockReward = 3
 
@@ -549,7 +620,7 @@ final class GameModel: ObservableObject {
     /// so a big blast doesn't dwarf everything else.
     private let bombDetonationReward = 12
     /// Lifetime of a per-pop floating "+N" marker before it is retired.
-    private let floatingScoreLifetime: TimeInterval = 0.7
+    private let floatingScoreLifetime: TimeInterval = 0.5
 
     init(makeInitialBoard: Bool = true, now: @escaping () -> Date = { Date() }) {
         self.now = now
@@ -960,7 +1031,7 @@ final class GameModel: ObservableObject {
         drainEventQueue()
 
         Task { [weak self] in
-            let lifetime = UInt64((escapingBlock.duration + 0.025) * 1_000_000_000)
+            let lifetime = UInt64((escapingBlock.duration + 0.015) * 1_000_000_000)
             try? await Task.sleep(nanoseconds: lifetime)
             self?.removeEscapingBlock(id: blockID)
         }
@@ -996,7 +1067,7 @@ final class GameModel: ObservableObject {
             nextBoard[position.row][position.column] = nil
             let escapingID = hit.id
             Task { [weak self] in
-                let lifetime = UInt64((escaping.duration + 0.025) * 1_000_000_000)
+                let lifetime = UInt64((escaping.duration + 0.015) * 1_000_000_000)
                 try? await Task.sleep(nanoseconds: lifetime)
                 self?.removeEscapingBlock(id: escapingID)
             }
@@ -1045,7 +1116,7 @@ final class GameModel: ObservableObject {
         block.isMiss = true
         updateCell(row: row, column: column, with: block)
         applyMissTimePenalty()
-        // A wrong flick also shaves a little score (clamped at 0). Applied every miss so it stays
+        // A wrong flick also deducts score (clamped at 0). Applied every miss so it stays
         // deterministic; only the *sensory* feedback below is coalesced.
         let deducted = min(score, missScorePenalty)
         score -= deducted
@@ -1237,6 +1308,43 @@ final class GameModel: ObservableObject {
     }
 
     #if DEBUG
+    func loadShowcaseStatsForDebug() {
+        var showcase = PlayerStats()
+        showcase.roundsPlayed = 18
+        showcase.classicRounds = 12
+        showcase.dailyRounds = 6
+        showcase.totalScore = 86_420
+        showcase.totalPops = 1_284
+        showcase.totalMisses = 74
+        showcase.totalUnlocks = 318
+        showcase.totalBoardClears = 32
+        showcase.bestScore = 42_800
+        showcase.bestClassicScore = 42_800
+        showcase.bestDailyScore = 18_640
+        showcase.bestChain = 21
+        showcase.bestAccuracy = 97
+        showcase.mostUnlocksInRound = 14
+        showcase.mostBoardClearsInRound = 5
+        showcase.currentStreak = 6
+        showcase.longestStreak = 9
+        showcase.lastDailyCompletionDayID = DailyChallenge.today(now: now()).id
+        showcase.recentScores = [42_800, 31_420, 18_640, 22_100, 14_900, 9_240, 12_800, 7_560]
+        showcase.unlockedAchievementIDs = [
+            "first_run", "first_clear", "score_500", "score_1000", "score_2000",
+            "score_5000", "score_10000", "score_25000", "chain_5", "chain_10",
+            "chain_15", "chain_20", "clean_run", "sharp_run", "flawless_30",
+            "unlock_5", "unlock_10", "path_burst", "path_burst_5", "pops_40",
+            "clear_2", "clear_4", "daily_first", "daily_score_1000",
+            "daily_score_2000", "daily_5", "streak_3", "ten_rounds",
+            "hundred_pops", "total_25k"
+        ]
+        showcase.seenAchievementIDs = Array(showcase.unlockedAchievementIDs.prefix(24))
+
+        stats = showcase
+        best = showcase.bestClassicScore
+        dailyBest = showcase.bestDailyScore
+    }
+
     func loadBoardForTesting(
         _ board: [[PopBlock?]],
         running: Bool = true,
@@ -1377,7 +1485,7 @@ final class GameModel: ObservableObject {
     private func emitFloatingScore(amount: Int, row: Int, column: Int, chain: Int) {
         let marker = FloatingScore(row: row, column: column, amount: amount, chain: chain)
         floatingScores.append(marker)
-        let maximumVisible = 8
+        let maximumVisible = 6
         if floatingScores.count > maximumVisible {
             floatingScores.removeFirst(floatingScores.count - maximumVisible)
         }
@@ -1407,7 +1515,7 @@ final class GameModel: ObservableObject {
         // Headroom for a full bomb blast (the popped bomb + up to 11 detonated cells) so the
         // player's own flicked-block pop isn't trimmed off the front in favor of the secondary
         // detonation pops.
-        let maximumVisibleEffects = 14
+        let maximumVisibleEffects = 12
         if escapingBlocks.count > maximumVisibleEffects {
             escapingBlocks.removeFirst(escapingBlocks.count - maximumVisibleEffects)
         }

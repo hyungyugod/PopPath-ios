@@ -16,6 +16,8 @@ private enum AppRoute {
     case result
     case records
     case settings
+    case blockGuide
+    case tiers
 }
 
 /// What finishing (or skipping) the tutorial should do: start a first run of the chosen mode,
@@ -49,20 +51,20 @@ struct RootView: View {
     private var effectiveReduceMotion: Bool { systemReduceMotion || reduceMotion }
     #if DEBUG
     @State private var handledLaunchArguments = false
+    @State private var debugStartsPaused = false
     #endif
 
-    /// Largest the portrait column is allowed to grow, centered on the warm-cream background past
-    /// a large phone (~440×932) — on iPad the extra space would otherwise be wasted margin or a
-    /// top-pinned phone layout. Every iPhone is inside the smaller box, so the cap is a no-op
-    /// there; only iPad gets the centered column.
+    /// Largest the play column is allowed to grow, centered on the warm-cream background past a
+    /// large phone (~440×932). On iPad the width cap keeps low-density cards and copy from turning
+    /// into sparse full-width bars, while the height stays available so screenshots and gameplay
+    /// don't float in the middle of a mostly empty screen.
     ///
-    /// Board-centric screens (the game, the tutorial board) fill wide — a big board reads well and
-    /// is nicer to tap. Menu/text screens stay narrower so low-density cards and copy don't stretch
-    /// into sparse full-width bars.
-    private var contentMaxSize: CGSize {
+    /// Board-centric screens (the game, the tutorial board) fill wider — a big board reads well and
+    /// is nicer to tap. Menu/text screens stay narrower.
+    private var contentMaxWidth: CGFloat {
         switch route {
-        case .game, .tutorial: return CGSize(width: 760, height: 1180)
-        default: return CGSize(width: 620, height: 1000)
+        case .game, .tutorial: return 760
+        default: return 620
         }
     }
 
@@ -74,11 +76,10 @@ struct RootView: View {
             currentScreen
                 .environment(\.appLanguage, appLanguage)
                 .transition(.opacity.combined(with: .scale(scale: 0.985)))
-                // The game is designed as a one-hand portrait column. On iPad (and any width
-                // past a large phone) cap the content and center it on the warm background so it
-                // reads as a deliberate layout instead of a stretched phone — every screen lives
-                // inside `currentScreen`, so one cap covers Home/Game/Result/Records/Settings.
-                .frame(maxWidth: contentMaxSize.width, maxHeight: contentMaxSize.height)
+                // On iPad (and any width past a large phone) cap the content and center it on the
+                // warm background so it reads as a deliberate layout instead of a stretched phone.
+                // Every screen lives inside `currentScreen`, so one cap covers the whole app.
+                .frame(maxWidth: contentMaxWidth)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .preferredColorScheme(.light)
@@ -199,6 +200,7 @@ struct RootView: View {
                 hapticsEnabled: $hapticsEnabled,
                 colorAssist: $colorAssist,
                 reduceMotion: effectiveReduceMotion,
+                startsPaused: startsPausedForDebug,
                 onExit: {
                     // GameView already finalized the round (credited exit); just route home.
                     withAnimation(.spring(response: 0.38, dampingFraction: 0.86)) {
@@ -251,11 +253,25 @@ struct RootView: View {
                 onBack: goHome
             )
             .edgeSwipeBack(perform: goHome)
+        case .blockGuide:
+            BlockGuideSheet()
+                .edgeSwipeBack(perform: { withAnimation(.spring(response: 0.38, dampingFraction: 0.86)) { route = .home } })
+        case .tiers:
+            TierLadderSheet(best: max(game.best, 160_000))
+                .edgeSwipeBack(perform: { withAnimation(.spring(response: 0.38, dampingFraction: 0.86)) { route = .home } })
         }
     }
 
     private var appLanguage: AppLanguage {
         AppLanguage(rawValue: appLanguageRaw) ?? .korean
+    }
+
+    private var startsPausedForDebug: Bool {
+        #if DEBUG
+        return debugStartsPaused
+        #else
+        return false
+        #endif
     }
 
     private var appLanguageBinding: Binding<AppLanguage> {
@@ -314,6 +330,11 @@ struct RootView: View {
         handledLaunchArguments = true
 
         let arguments = ProcessInfo.processInfo.arguments
+        if arguments.contains("-popPathShowcaseData") {
+            hasSeenTutorial = true
+            game.loadShowcaseStatsForDebug()
+        }
+
         if arguments.contains("-popPathStartDaily") {
             hasSeenTutorial = true
             startGame(mode: .daily)
@@ -322,6 +343,13 @@ struct RootView: View {
 
         if arguments.contains("-popPathStartGame") {
             hasSeenTutorial = true
+            startGame()
+            return
+        }
+
+        if arguments.contains("-popPathShowPausedGame") {
+            hasSeenTutorial = true
+            debugStartsPaused = true
             startGame()
             return
         }
@@ -336,6 +364,27 @@ struct RootView: View {
         if arguments.contains("-popPathShowTutorial") {
             withAnimation(.spring(response: 0.38, dampingFraction: 0.86)) {
                 route = .tutorial
+            }
+            return
+        }
+
+        if arguments.contains("-popPathShowSettings") {
+            withAnimation(.spring(response: 0.38, dampingFraction: 0.86)) {
+                route = .settings
+            }
+            return
+        }
+
+        if arguments.contains("-popPathShowGuide") {
+            withAnimation(.spring(response: 0.38, dampingFraction: 0.86)) {
+                route = .blockGuide
+            }
+            return
+        }
+
+        if arguments.contains("-popPathShowTiers") {
+            withAnimation(.spring(response: 0.38, dampingFraction: 0.86)) {
+                route = .tiers
             }
             return
         }

@@ -183,8 +183,8 @@ final class GameRulesTests: XCTestCase {
 
         model.swipe(row: 2, column: 1, hapticsEnabled: false)
         XCTAssertEqual(model.chain, 0)
-        // The miss breaks the chain and shaves the small score penalty (10 − 5).
-        XCTAssertEqual(model.score, 5)
+        // The miss breaks the chain and deducts the stronger penalty, clamped at 0.
+        XCTAssertEqual(model.score, 0)
     }
 
     @MainActor
@@ -363,7 +363,7 @@ final class GameRulesTests: XCTestCase {
         XCTAssertEqual(model.stats.bestScore, 274)
         XCTAssertTrue(model.stats.unlockedAchievementIDs.contains("first_run"))
         XCTAssertEqual(GameModel.loadStats(), model.stats)
-        XCTAssertEqual(model.roundSummary?.unlockedAchievements.map(\.id), ["first_run"])
+        XCTAssertEqual(model.roundSummary?.unlockedAchievements.map(\.id), ["first_run", "first_clear"])
     }
 
     @MainActor
@@ -753,17 +753,19 @@ final class GameRulesTests: XCTestCase {
         let model = GameModel(makeInitialBoard: false)
         var board = GameRules.emptyBoard()
         board[3][5] = PopBlock(direction: .right, tone: .mistBlue)   // pop → score 10
+        board[4][0] = PopBlock(direction: .left, tone: .lavenderMist) // pop → +20, score 30
         board[2][1] = PopBlock(direction: .right, tone: .mistBlue)   // points right into the wall
         board[2][4] = PopBlock(direction: .left, tone: .lavenderMist)
         board[0][0] = PopBlock(direction: .up, tone: .mistBlue)      // keeps the board unstuck
         model.loadBoardForTesting(board)
 
         model.swipe(row: 3, column: 5, hapticsEnabled: false)        // score 10, chain 1
-        model.swipe(row: 2, column: 1, hapticsEnabled: false)        // miss → −5, score 5
+        model.swipe(row: 4, column: 0, hapticsEnabled: false)        // score 30, chain 2
+        model.swipe(row: 2, column: 1, hapticsEnabled: false)        // miss → −30, score 0
 
-        XCTAssertEqual(model.score, 5)
+        XCTAssertEqual(model.score, 0)
         XCTAssertEqual(model.boardToast?.style, .penalty, "A deducting miss surfaces the red penalty toast")
-        XCTAssertEqual(model.boardToast?.detail, "−5")
+        XCTAssertEqual(model.boardToast?.detail, "−30")
     }
 
     @MainActor
@@ -785,20 +787,23 @@ final class GameRulesTests: XCTestCase {
         XCTAssertEqual(Grade.forScore(5_000).tier, 1)      // Bronze
         XCTAssertEqual(Grade.forScore(9_999).tier, 1)
         XCTAssertEqual(Grade.forScore(10_000).tier, 2)     // Silver
-        XCTAssertEqual(Grade.forScore(49_999).tier, 9)     // Master, one below the top gate
-        XCTAssertEqual(Grade.forScore(50_000).tier, 10)    // Grandmaster
+        XCTAssertEqual(Grade.forScore(154_999).tier, 8)    // Diamond, one below Master
+        XCTAssertEqual(Grade.forScore(155_000).tier, 9)    // Master
+        XCTAssertEqual(Grade.forScore(199_999).tier, 9)    // Master, one below the top gate
+        XCTAssertEqual(Grade.forScore(200_000).tier, 10)   // Grandmaster
         XCTAssertEqual(Grade.forScore(1_000_000).tier, 10) // never exceeds the top tier
 
-        // Ten ranked tiers, 5,000 apart starting at 5,000.
+        // Ten ranked tiers with a widening middle-to-late ladder ending at 200k.
         XCTAssertEqual(Grade.ranked.count, 10)
         XCTAssertEqual(
             Grade.ranked.map(\.threshold),
-            Array(stride(from: 5_000, through: 50_000, by: 5_000))
+            [5_000, 10_000, 15_000, 25_000, 40_000, 60_000, 85_000, 115_000, 155_000, 200_000]
         )
 
         // Progress-to-next reads off the live score; the top tier reports none.
         XCTAssertEqual(Grade.forScore(7_000).pointsToNext(from: 7_000), 3_000) // Bronze → Silver at 10k
-        XCTAssertNil(Grade.forScore(60_000).pointsToNext(from: 60_000))
+        XCTAssertEqual(Grade.forScore(160_000).pointsToNext(from: 160_000), 40_000) // Master → Grandmaster
+        XCTAssertNil(Grade.forScore(200_000).pointsToNext(from: 200_000))
     }
 
     @MainActor
@@ -1302,6 +1307,89 @@ final class GameRulesTests: XCTestCase {
         model.finishRound(hapticsEnabled: false, soundEnabled: false)
 
         XCTAssertEqual(model.roundSummary?.unlockedAchievements.map(\.id), ["first_run"])
+    }
+
+    func testExpandedAchievementCatalogHasUniqueIDs() {
+        let ids = AchievementCatalog.all.map(\.id)
+
+        XCTAssertEqual(AchievementCatalog.all.count, 48)
+        XCTAssertEqual(Set(ids).count, ids.count)
+        XCTAssertTrue(ids.contains("score_25000"))
+        XCTAssertTrue(ids.contains("score_200000"))
+        XCTAssertTrue(ids.contains("streak_30"))
+        XCTAssertTrue(ids.contains("total_250k"))
+    }
+
+    func testExpandedLiveEligibleAchievementsIncludeHigherTiers() {
+        var metrics = RoundMetrics()
+        metrics.pops = 60
+        metrics.unlocks = 10
+        metrics.bestUnlockBurst = 5
+        metrics.boardClears = 6
+
+        let ids = AchievementCatalog.liveEligibleIDs(
+            score: 200_000,
+            maxChain: 20,
+            metrics: metrics
+        )
+
+        XCTAssertTrue(ids.contains("score_5000"))
+        XCTAssertTrue(ids.contains("score_10000"))
+        XCTAssertTrue(ids.contains("score_25000"))
+        XCTAssertTrue(ids.contains("score_50000"))
+        XCTAssertTrue(ids.contains("score_100000"))
+        XCTAssertTrue(ids.contains("score_200000"))
+        XCTAssertTrue(ids.contains("chain_15"))
+        XCTAssertTrue(ids.contains("chain_20"))
+        XCTAssertTrue(ids.contains("unlock_10"))
+        XCTAssertTrue(ids.contains("path_burst_5"))
+        XCTAssertTrue(ids.contains("pops_40"))
+        XCTAssertTrue(ids.contains("pops_60"))
+        XCTAssertTrue(ids.contains("clear_6"))
+    }
+
+    func testExpandedLongTermAchievementsUnlockFromStats() {
+        var metrics = RoundMetrics()
+        metrics.pops = 60
+        metrics.misses = 0
+        metrics.unlocks = 10
+        metrics.bestUnlockBurst = 5
+        metrics.boardClears = 6
+
+        var updatedStats = PlayerStats()
+        updatedStats.roundsPlayed = 100
+        updatedStats.classicRounds = 25
+        updatedStats.dailyRounds = 20
+        updatedStats.totalScore = 250_000
+        updatedStats.totalPops = 1_000
+        updatedStats.totalUnlocks = 250
+        updatedStats.totalBoardClears = 25
+        updatedStats.currentStreak = 30
+
+        let ids = Set(AchievementCatalog.newlyUnlocked(
+            score: 200_000,
+            maxChain: 20,
+            metrics: metrics,
+            mode: .daily,
+            previousStats: PlayerStats(),
+            updatedStats: updatedStats
+        ).map(\.id))
+
+        for id in [
+            "flawless_30",
+            "score_200000",
+            "daily_score_2000",
+            "daily_20",
+            "streak_30",
+            "classic_25",
+            "hundred_rounds",
+            "thousand_pops",
+            "total_clears_25",
+            "total_unlocks_250",
+            "total_250k"
+        ] {
+            XCTAssertTrue(ids.contains(id), "Expected \(id) to unlock")
+        }
     }
 
     @MainActor

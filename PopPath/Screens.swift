@@ -1222,42 +1222,100 @@ private extension Achievement {
         switch id {
         case "first_run":
             return "첫 스와이프"
+        case "first_clear":
+            return "첫 싹쓸이"
         case "score_500":
             return "워밍업"
         case "score_1000":
             return "길 고수"
         case "score_2000":
             return "길 전설"
+        case "score_5000":
+            return "브론즈 돌파"
+        case "score_10000":
+            return "실버 질주"
+        case "score_25000":
+            return "골드 러시"
+        case "score_50000":
+            return "다이아 등반"
+        case "score_100000":
+            return "10만 러너"
+        case "score_200000":
+            return "그랜드마스터 런"
         case "chain_5":
             return "체인 착착"
         case "chain_10":
             return "팡팡 모드"
+        case "chain_15":
+            return "체인 폭풍"
+        case "chain_20":
+            return "끝없는 흐름"
         case "clean_run":
             return "노 미스"
         case "sharp_run":
             return "명사수"
+        case "flawless_30":
+            return "무결점 흐름"
         case "unlock_5":
             return "길잡이"
+        case "unlock_10":
+            return "마스터 키"
         case "path_burst":
             return "길이 팡!"
+        case "path_burst_5":
+            return "길 대폭발"
+        case "pops_40":
+            return "스와이프 폭풍"
+        case "pops_60":
+            return "1분 기계"
         case "clear_2":
             return "싹쓸이"
         case "clear_4":
             return "싹쓸이 달인"
+        case "clear_6":
+            return "테이블 클리너"
         case "daily_first":
             return "오늘도 출석"
+        case "daily_score_1000":
+            return "오늘의 불꽃"
+        case "daily_score_2000":
+            return "오늘의 챔피언"
+        case "daily_5":
+            return "데일리 5회"
+        case "daily_20":
+            return "데일리 중독"
         case "streak_3":
             return "연속 3일"
         case "streak_7":
             return "한 주 완주"
+        case "streak_14":
+            return "2주 길잡이"
+        case "streak_30":
+            return "한 달 불꽃"
         case "ten_rounds":
             return "열 판째!"
+        case "classic_25":
+            return "클래식 단골"
         case "fifty_rounds":
             return "50판 클럽"
+        case "hundred_rounds":
+            return "100판 클럽"
         case "hundred_pops":
             return "백 번 스와이프"
+        case "five_hundred_pops":
+            return "오백 번 팡"
+        case "thousand_pops":
+            return "천 번 팡"
+        case "total_clears_25":
+            return "싹쓸이 수집가"
+        case "total_unlocks_250":
+            return "길 설계자"
         case "total_25k":
             return "마라토너"
+        case "total_100k":
+            return "10만 길"
+        case "total_250k":
+            return "PopPath 프로"
         default:
             return title
         }
@@ -1269,42 +1327,100 @@ private extension Achievement {
         switch id {
         case "first_run":
             return "첫 판 마무리"
+        case "first_clear":
+            return "보드 1번 싹쓸이"
         case "score_500":
             return "500점 넘기기"
         case "score_1000":
             return "1,000점 넘기기"
         case "score_2000":
             return "2,000점 넘기기"
+        case "score_5000":
+            return "5,000점 넘기기"
+        case "score_10000":
+            return "10,000점 넘기기"
+        case "score_25000":
+            return "25,000점 넘기기"
+        case "score_50000":
+            return "50,000점 넘기기"
+        case "score_100000":
+            return "100,000점 넘기기"
+        case "score_200000":
+            return "200,000점 넘기기"
         case "chain_5":
             return "체인 x5 달성"
         case "chain_10":
             return "체인 x10 달성"
+        case "chain_15":
+            return "체인 x15 달성"
+        case "chain_20":
+            return "체인 x20 달성"
         case "clean_run":
             return "실수 없이 마무리"
         case "sharp_run":
             return "정확도 95% 이상"
+        case "flawless_30":
+            return "실수 없이 30개 이상 팡"
         case "unlock_5":
             return "한 판에서 길 5개 열기"
+        case "unlock_10":
+            return "한 판에서 길 10개 열기"
         case "path_burst":
             return "한 번에 길 3개 열기"
+        case "path_burst_5":
+            return "한 번에 길 5개 열기"
+        case "pops_40":
+            return "한 판에서 블록 40개 팡"
+        case "pops_60":
+            return "한 판에서 블록 60개 팡"
         case "clear_2":
             return "한 판에서 2번 싹쓸이"
         case "clear_4":
             return "한 판에서 4번 싹쓸이"
+        case "clear_6":
+            return "한 판에서 6번 싹쓸이"
         case "daily_first":
             return "오늘의 길 마무리"
+        case "daily_score_1000":
+            return "오늘의 길에서 1,000점"
+        case "daily_score_2000":
+            return "오늘의 길에서 2,000점"
+        case "daily_5":
+            return "오늘의 길 5번 마무리"
+        case "daily_20":
+            return "오늘의 길 20번 마무리"
         case "streak_3":
             return "데일리 3일 연속"
         case "streak_7":
             return "데일리 7일 연속"
+        case "streak_14":
+            return "데일리 14일 연속"
+        case "streak_30":
+            return "데일리 30일 연속"
         case "ten_rounds":
             return "10판 마무리"
+        case "classic_25":
+            return "클래식 25판 마무리"
         case "fifty_rounds":
             return "50판 마무리"
+        case "hundred_rounds":
+            return "100판 마무리"
         case "hundred_pops":
             return "블록 100개 스와이프"
+        case "five_hundred_pops":
+            return "블록 500개 스와이프"
+        case "thousand_pops":
+            return "블록 1,000개 스와이프"
+        case "total_clears_25":
+            return "누적 보드 25번 싹쓸이"
+        case "total_unlocks_250":
+            return "누적 길 250개 열기"
         case "total_25k":
             return "누적 25,000점"
+        case "total_100k":
+            return "누적 100,000점"
+        case "total_250k":
+            return "누적 250,000점"
         default:
             return subtitle
         }
