@@ -21,53 +21,61 @@ Prepared on June 25, 2026.
 
 ## URLs
 
-The Notion pages are created (with the real support email filled in). Publish each to the web
-(Notion: page ••• menu -> Publish) and paste the resulting public `*.notion.site` URL below and
-into App Store Connect.
+Both Notion pages are published to the web. Use ONLY the public `*.notion.site` URLs below in
+App Store Connect — these were verified to load with no Notion login. (Both URLs are already
+entered in ASC: Privacy Policy URL on the App Privacy page, Support URL on the version page,
+KO + EN.)
 
-- Privacy Policy (Notion page): https://app.notion.com/p/38ae5a0eed53815ca62cf1899719e22a
-- Support (Notion page): https://app.notion.com/p/38ae5a0eed5381718be8f2718a5e56c8
-- Privacy Policy URL (public, after Publish): `https://weak-curler-42e.notion.site/PopPath-Privacy-Policy-38ae5a0eed53815ca62cf1899719e22a`
-- Support URL (public, after Publish): `https://weak-curler-42e.notion.site/PopPath-Support-38ae5a0eed5381718be8f2718a5e56c8`
+USE THESE (public):
+- Privacy Policy URL: `https://weak-curler-42e.notion.site/PopPath-Privacy-Policy-38ae5a0eed53815ca62cf1899719e22a`
+- Support URL: `https://weak-curler-42e.notion.site/PopPath-Support-38ae5a0eed5381718be8f2718a5e56c8`
 - Marketing URL: leave blank
+
+DO NOT USE (private editor links — these require a Notion login and will fail review if pasted):
+- ~~https://app.notion.com/p/38ae5a0eed53815ca62cf1899719e22a~~ (Privacy editor)
+- ~~https://app.notion.com/p/38ae5a0eed5381718be8f2718a5e56c8~~ (Support editor)
 
 ## Korean Metadata
 
 Subtitle:
 
 ```text
-60초 화살표 체인 퍼즐
+화살표 길을 찾는 60초 퍼즐
 ```
 
 Promotional text:
 
 ```text
-화살표가 빠져나갈 수 있는 길을 찾아 60초 안에 체인을 이어 보세요. 광고와 결제 없이 짧고 깔끔하게 즐기는 퍼즐입니다.
+화살표가 빠져나갈 틈이 보이는 블록만 골라 누르면 됩니다. 빠르게 이으면 콤보. 60초 한 판, 광고도 결제도 없습니다.
 ```
 
 Description:
 
 ```text
-PopPath는 화살표 블록의 길을 읽고 연속으로 터뜨리는 60초 퍼즐 게임입니다.
+PopPath는 화살표가 보드 밖으로 빠져나갈 수 있는 블록을 찾아 누르는 60초짜리 퍼즐입니다.
 
-화살표가 보드 밖으로 빠져나갈 수 있는 블록만 눌러 제거하세요. 블록 하나가 사라지면 주변 길이 열리고, 빠르게 이어 누르면 체인이 쌓입니다.
+블록마다 화살표 방향이 정해져 있고, 그 방향으로 막힘 없이 가장자리까지 길이 뚫린 블록만 터집니다. 길이 막힌 블록을 누르면 약간의 감점이 있으니 한 번 보고 누르는 게 좋아요. 하나를 터뜨리면 그 자리가 비면서 옆 블록들의 길이 새로 열립니다. 맞는 블록을 빠르게 연속으로 누르면 콤보가 쌓여 점수가 더 붙습니다.
 
-클래식 모드에서는 언제든 짧게 한 판을 즐길 수 있고, 오늘의 길에서는 하루 한 번 모두 같은 보드를 풀 수 있습니다. 최고 점수, 일일 최고, 통계, 업적, 티어를 확인하며 더 깔끔한 체인을 노려 보세요.
+규칙은 단순한데, 어떤 블록을 먼저 비워야 다음 길이 열리는지 보는 눈이 점점 늘어요. 가끔 어느 방향이든 열린 길로 터지는 와일드 블록이나, 십자로 한꺼번에 정리되는 폭탄 같은 블록도 섞여 나옵니다.
+
+모드는 둘입니다. 클래식은 60초 한 판으로, 잠깐 시간 날 때 가볍게 돌리기 좋습니다. 오늘의 길은 날짜로 그날의 보드 하나가 만들어져 모두 같은 판을 풉니다. 서버 없이 기기 안에서 그날 보드를 만드는 방식이라, 같은 날이면 누구나 같은 보드예요.
+
+기록은 전부 기기에 남습니다. 최고 점수와 일일 최고를 갱신하고, 통계와 업적을 채우고, 새내기부터 시작하는 티어를 올려 최종 '팝패스의 신'까지 가 보세요.
 
 주요 기능
 - 60초 클래식 모드
-- 하루 한 번 플레이하는 오늘의 길
-- 최고 점수, 통계, 업적, 티어 기록
-- 사운드, 진동, 움직임 줄이기, 연습용 길 표시 설정
-- 광고 없음, 인앱 결제 없음, 계정 없음
+- 하루 한 번, 모두 같은 보드를 푸는 오늘의 길
+- 최고 점수, 일일 최고, 통계, 업적, 티어 기록
+- 사운드, 진동, 모션 줄이기, 연습용 길 표시, 한국어/영어
+- 광고, 인앱 결제, 계정 없음. 인터넷 연결도 필요 없고 데이터는 기기에만 저장됩니다
 
-짧게 한 판, 더 좋은 길, 더 높은 기록을 만들어 보세요.
+iPhone과 iPad에서 세로 화면으로 플레이합니다.
 ```
 
 Keywords:
 
 ```text
-퍼즐,캐주얼,화살표,체인,두뇌,보드,논리,아케이드,점수,데일리
+퍼즐,캐주얼,화살표,체인,콤보,보드,논리,점수,데일리,기록
 ```
 
 Release notes:
@@ -82,38 +90,42 @@ PopPath 첫 출시 버전입니다.
 Subtitle:
 
 ```text
-Quick arrow-chain puzzle
+Read the board, pop the path
 ```
 
 Promotional text:
 
 ```text
-Find open arrows, keep the chain alive, and chase a cleaner score in fast 60-second puzzle runs. No ads, no purchases.
+Each block points somewhere. Pop the ones whose arrow has a clear lane to the edge, and keep the chain going before the 60 seconds are up.
 ```
 
 Description:
 
 ```text
-PopPath is a quick 60-second puzzle about reading the board and popping the right arrows in sequence.
+Every block on the board points a direction. Tap a block and it pops along its arrow — but only if that arrow has a clear lane to the edge. Tap one that's blocked and you miss.
 
-Tap only the blocks whose arrows have a clear path out of the board. Every pop opens new space, and quick correct taps build a bigger chain.
+So you read the board before you move. Clearing one block opens a lane for its neighbors, and stringing quick pops together builds a combo. A few blocks change things up: bombs take out their whole row and column, armored blocks need an extra hit, and wild blocks pop along any open lane.
 
-Play a short Classic round anytime, or return for the Daily Challenge to solve the same one-shot board as everyone else. Track your best score, daily best, records, achievements, and tier progress as you improve.
+A round lasts 60 seconds. Play Classic whenever you have a minute, or take the Daily Challenge: one board built from the day's date, the same for everyone, once a day.
+
+Your best scores, daily best, records, and achievements stay on the device. Stack up enough points and you climb the tier ladder, from Rookie all the way to God of PopPath.
 
 Features
-- Fast 60-second Classic rounds
-- A once-per-day Daily Challenge
-- Local records, achievements, and tier progress
-- Sound, haptics, reduce motion, and practice path settings
-- No ads, no in-app purchases, no account
+- 60-second Classic rounds
+- A daily board, shared and once per day
+- Best score, daily best, records, and achievements
+- A tier ladder from Rookie to God of PopPath
+- Sound, haptics, reduce motion, and a practice path hint
+- English and Korean
+- No ads, no in-app purchases, no account, fully offline
 
-One clean board, one better chain, one higher score.
+Short rounds, no clutter. Just you and the board.
 ```
 
 Keywords:
 
 ```text
-arrow,puzzle,casual,chain,daily,board,logic,arcade,score,tap
+arrow,puzzle,casual,chain,daily,board,logic,combo,score,tap
 ```
 
 Release notes:
@@ -188,11 +200,22 @@ No login is required.
 There are no ads, in-app purchases, subscriptions, tracking SDKs, or account features.
 All gameplay data is stored locally on the device.
 The Daily Challenge is generated locally from the current date and does not require a server.
+The Daily Reminder is an optional local notification (off by default); the notification prompt only appears if the user turns it on, and no push server is used.
 The share button uses the standard iOS share sheet only when the user chooses to share a result.
 ```
 
 ## Remaining Manual Values
 
-- Publish the two Notion pages to the web and paste the public `*.notion.site` URLs into the URLs section above and into App Store Connect.
+Done (entered in App Store Connect):
+- KO + EN metadata (name, subtitle, promo, description, keywords), categories, age rating (4+), App Privacy (Data Not Collected), Privacy Policy URL, Support URL, App Review notes.
 - Copyright owner confirmed as `성현규` (© 2026 성현규).
-- Support email is already set to `hyungyugood0129@gmail.com` in both Notion pages; change it there if needed.
+- Support email set to `hyungyugood0129@gmail.com` in both Notion pages.
+
+Must do before tapping Submit (the user):
+- **EU DSA Trader Status** — App Store Connect → App Information / Business → answer the Trader Status question. If left blank, the app is withheld from all EU storefronts and submission can be blocked. A free non-commercial app is typically declared non-trader, but the question MUST be answered.
+- **Publish the App Privacy section** — App Privacy page → blue **게시 / Publish** button (saved as draft now; must be published before submission).
+- **Re-check the two URL fields in incognito** — confirm the Privacy Policy URL and Support URL in ASC are the public `*.notion.site` links (load with no Notion login), never the `app.notion.com/p/` editor links.
+- **Real-device smoke test** (guards against the most common 4.2/2.1 "simple game" rejection — a reviewer hitting a broken state): one full Classic round start to finish with no crash; Daily Challenge deals a board and records completion; no unsolvable board is ever dealt; every Settings toggle works (sound, haptics, reduce motion, practice path, language, daily reminder, reset data). Test on the oldest iOS 17 device you have.
+
+Optional (nice-to-have, not blockers):
+- Recapture screenshot 10 (tier ladder) scrolled to the top so the apex tier **팝패스의 신 / God of PopPath** is visible — currently it tops out at Grandmaster (the description now names the God tier).
