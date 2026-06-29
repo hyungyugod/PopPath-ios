@@ -15,7 +15,7 @@ Prepared on June 25, 2026.
 - In-app purchases: `None`
 - Ads: `None`
 - Account/login: `None`
-- Copyright: `© 2026 Hyungyu`
+- Copyright: `© 2026 성현규`
 - Age rating target: `4+`
 - Kids Category: `No`
 
@@ -194,5 +194,5 @@ The share button uses the standard iOS share sheet only when the user chooses to
 ## Remaining Manual Values
 
 - Publish the two Notion pages to the web and paste the public `*.notion.site` URLs into the URLs section above and into App Store Connect.
-- Confirm the copyright owner name if `Hyungyu` should be changed.
+- Copyright owner confirmed as `성현규` (© 2026 성현규).
 - Support email is already set to `hyungyugood0129@gmail.com` in both Notion pages; change it there if needed.
