@@ -27,8 +27,8 @@ into App Store Connect.
 
 - Privacy Policy (Notion page): https://app.notion.com/p/38ae5a0eed53815ca62cf1899719e22a
 - Support (Notion page): https://app.notion.com/p/38ae5a0eed5381718be8f2718a5e56c8
-- Privacy Policy URL (public, after Publish): `PUBLISH_THEN_PASTE`
-- Support URL (public, after Publish): `PUBLISH_THEN_PASTE`
+- Privacy Policy URL (public, after Publish): `https://weak-curler-42e.notion.site/PopPath-Privacy-Policy-38ae5a0eed53815ca62cf1899719e22a`
+- Support URL (public, after Publish): `https://weak-curler-42e.notion.site/PopPath-Support-38ae5a0eed5381718be8f2718a5e56c8`
 - Marketing URL: leave blank
 
 ## Korean Metadata

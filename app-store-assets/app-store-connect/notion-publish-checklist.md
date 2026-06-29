@@ -8,12 +8,15 @@ Both Notion pages have been created with the real support email
 - Privacy Policy: https://app.notion.com/p/38ae5a0eed53815ca62cf1899719e22a
 - Support: https://app.notion.com/p/38ae5a0eed5381718be8f2718a5e56c8
 
-So steps 1-3 and 5-7 below are done. **Only the web-publish + URL paste remain** (steps 4, 8,
-9) because publishing a Notion page to the public web is a manual UI action:
+All steps are now done. The pages were web-published and the public `*.notion.site` URLs were
+verified (load without a Notion login) and entered into App Store Connect:
 
-- [ ] Open each page -> page `•••` menu -> **Publish** -> copy the public `*.notion.site` URL.
-- [ ] Confirm each public URL opens in a private/incognito window (no Notion login required).
-- [ ] Paste both public URLs into `app-store-connect-fields.md` and App Store Connect.
+- Privacy Policy (public): https://weak-curler-42e.notion.site/PopPath-Privacy-Policy-38ae5a0eed53815ca62cf1899719e22a
+- Support (public): https://weak-curler-42e.notion.site/PopPath-Support-38ae5a0eed5381718be8f2718a5e56c8
+
+- [x] Open each page -> page `•••` menu -> **Publish** -> copy the public `*.notion.site` URL.
+- [x] Confirm each public URL opens in a private/incognito window (no Notion login required).
+- [x] Paste both public URLs into `app-store-connect-fields.md` and App Store Connect (Privacy Policy URL on the App Privacy page + Support URL on the version page, both KO & EN localizations).
 
 ## Original steps (for reference)
 
