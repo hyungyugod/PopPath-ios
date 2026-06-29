@@ -6,7 +6,7 @@ Last updated: June 25, 2026
 
 ### Contact
 
-For support, contact: `{{SUPPORT_EMAIL}}`
+For support, contact: `hyungyugood0129@gmail.com`
 
 When reporting an issue, include:
 
@@ -46,7 +46,7 @@ Open Settings inside PopPath and use Data Reset. This deletes local scores, reco
 
 ### 문의
 
-지원 문의: `{{SUPPORT_EMAIL}}`
+지원 문의: `hyungyugood0129@gmail.com`
 
 문제를 보낼 때 아래 정보를 함께 적어 주세요.
 

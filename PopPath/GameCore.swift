@@ -222,11 +222,10 @@ struct EscapingBlock: Identifiable, Equatable {
         column: Int,
         chain: Int = 1,
         startedAt: Date = .now,
-        // Kept short so rapid chains do not leave many animated block layers stacked over the
-        // board. The model still clears the cell immediately; this is visual confirmation only.
-        // The pop now bursts in place (no slide), so a tighter window keeps consecutive taps
-        // feeling instant — fewer layers ever overlap.
-        duration: TimeInterval = 0.16
+        // The tapped block vanishes instantly (the board cell clears on tap). This only sizes the
+        // lifetime of the reduce-motion confirmation overlay — a brief in-place tile fade; with
+        // motion on no overlay is created at all. Kept tiny so it never lingers as a "잔상".
+        duration: TimeInterval = 0.01
     ) {
         self.id = id
         self.block = block
@@ -1074,7 +1073,10 @@ enum Haptics {
 
         switch event {
         case .escape:
-            lightImpact.impactOccurred()
+            // A single pop is the most frequent haptic, so keep it a light, snappy tap rather than
+            // a full-strength thud — a lighter "감각", and gentler on the haptic engine when you pop
+            // in fast bursts. Chains / bigChains still escalate below so the big moments keep punch.
+            lightImpact.impactOccurred(intensity: 0.7)
             lightImpact.prepare()
         case .chain:
             mediumImpact.impactOccurred(intensity: 0.7)

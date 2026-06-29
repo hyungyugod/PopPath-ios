@@ -64,7 +64,8 @@ struct GameView: View {
                         column: column,
                         direction: direction,
                         hapticsEnabled: hapticsEnabled,
-                        soundEnabled: soundEnabled
+                        soundEnabled: soundEnabled,
+                        reduceMotion: reduceMotion
                     )
                 }
             )
@@ -971,89 +972,34 @@ private struct EscapingBlockView: View {
 
     var body: some View {
         let visibleProgress = progress
-        let burstLevel = min(CGFloat(max(escapingBlock.chain, 1)) / 6 + 0.32, 1.18)
-        // The ring blooms quickly over the first half of the pop's life so it reads as the "팡".
-        let ringProgress = ppSmoothStep(ppUnit(visibleProgress / 0.62))
-        // Fade out a touch earlier than it scales so the cell looks clear almost immediately —
-        // rapid taps never see a lingering ghost.
-        let tileOpacity = 1 - ppSmoothStep(ppUnit((visibleProgress - 0.18) / 0.6))
 
+        // The burst (glow bloom + particle spray) is gone entirely — on a normal pop the tapped
+        // block just vanishes the instant the cell clears, with no "잔상" left behind. Reduce-motion
+        // users still get a quiet in-place fade of the tile (plus the +N marker and haptic) as
+        // confirmation, since an abrupt disappearance is exactly what that setting is meant to avoid.
         ZStack {
-            // The ring + particle burst are motion; under reduce-motion the pop is confirmed
-            // by a quick opacity fade (plus the +N marker and haptic) instead (F3).
-            if !reduceMotion {
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .stroke(burstColor.opacity(Double((1 - ringProgress) * 0.72)), lineWidth: 2 + burstLevel * 2)
-                    .scaleEffect(0.92 + ringProgress * (0.62 + burstLevel * 0.2))
-                    .opacity(1 - ringProgress)
-
-                ForEach(0..<particleCount, id: \.self) { index in
-                    PopBurstParticle(
-                        index: index,
-                        count: particleCount,
-                        progress: visibleProgress,
-                        cellSize: cellSize,
-                        tone: escapingBlock.block.tone,
-                        burstColor: burstColor,
-                        intensity: burstLevel
-                    )
-                }
-            }
-
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(BlockFace.fillColor(for: escapingBlock.block))
-                .overlay {
+            if reduceMotion {
+                let tileOpacity = 1 - ppSmoothStep(ppUnit((visibleProgress - 0.04) / 0.42))
+                ZStack {
                     RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .fill(Color.white.opacity(flashOpacity(visibleProgress)))
+                        .fill(BlockFace.fillColor(for: escapingBlock.block))
+                    Image(systemName: escapingBlock.block.direction.symbolName)
+                        .font(.system(size: 18, weight: .bold, design: .rounded))
+                        .symbolRenderingMode(.monochrome)
+                        .foregroundStyle(Color.ppInkGray)
                 }
-
-            Image(systemName: escapingBlock.block.direction.symbolName)
-                .font(.system(size: 18, weight: .bold, design: .rounded))
-                .symbolRenderingMode(.monochrome)
-                .foregroundStyle(Color.ppInkGray)
+                .opacity(tileOpacity)
+            }
         }
         .frame(width: cellSize, height: cellSize)
-        // Pops *in place* — no offset/slide. A quick outward expand + fade is the whole effect,
-        // so there is nothing to slide off the cell and nothing to wait for before the next tap.
-        .scaleEffect(reduceMotion ? 1 : popScale(visibleProgress))
-        .opacity(tileOpacity)
         .zIndex(20)
         .onAppear {
-            // In both modes `progress` animates 0→1; reduce-motion just skips the scale/ring/
-            // particles above and reads as a clean fade-out.
-            let curve: Animation = reduceMotion
-                ? .easeOut(duration: escapingBlock.duration)
-                : .timingCurve(0.2, 0.9, 0.3, 1, duration: escapingBlock.duration)
-            withAnimation(curve) {
+            // Drives the reduce-motion confirmation fade; on motion this view renders nothing, so
+            // the escaping block is just held for its brief lifetime and then removed.
+            withAnimation(.easeOut(duration: escapingBlock.duration)) {
                 progress = 1
             }
         }
-    }
-
-    // Expand-and-fade in place: a fast outward punch (front-loaded by the ease-out so it reads as
-    // a snappy "burst", not a slow zoom) that grows past 1 while the tile fades. A longer chain
-    // punches a hair bigger for extra juice.
-    private func popScale(_ value: CGFloat) -> CGFloat {
-        let chainPunch = min(CGFloat(escapingBlock.chain), 6) * 0.02
-        return 1 + ppEaseOutCubic(value) * (0.32 + chainPunch)
-    }
-
-    private var particleCount: Int {
-        // Each particle's offset is recomputed from `progress` every animation frame, so the
-        // particle count is effectively the per-frame SwiftUI body-eval cost of a pop. Trimmed
-        // (was 5/6) so rapid-fire popping — many bursts animating at once — stays smooth.
-        escapingBlock.chain >= 6 ? 5 : 4
-    }
-
-    private var burstColor: Color {
-        .ppSoftCoral
-    }
-
-    // Photosensitivity guard (G8): the full-tile white flash is capped well below its old
-    // 0.58 peak and suppressed entirely under reduce-motion, so a fast chain never strobes.
-    private func flashOpacity(_ value: CGFloat) -> Double {
-        guard !reduceMotion else { return 0 }
-        return Double(max(0, 0.32 - value * 1.2))
     }
 }
 
@@ -1067,14 +1013,16 @@ private struct FloatingScoreView: View {
             .font(.system(size: 15, weight: .heavy, design: .rounded))
             .monospacedDigit()
             // Dark ink-green on the light pastel board reads cleanly WITHOUT a drop shadow; the
-            // shadow forced a per-marker offscreen pass and up to 6 of these animate at once on a
+            // shadow forced a per-marker offscreen pass and several of these animate at once on a
             // fast streak, so dropping it is a direct rapid-fire perf win.
             .foregroundStyle(Color.ppMintButtonText)
-            .offset(y: reduceMotion ? -10 : -(8 + 34 * progress))
+            // A short fade in place — no rise, no scaleEffect. The offset is a fixed transform (free)
+            // and the only animated property is opacity, so even several markers at once on a fast
+            // streak neither travel nor re-rasterize: the lightest possible "+N" confirmation.
+            .offset(y: -10)
             .opacity(opacity)
-            .scaleEffect(reduceMotion ? 1 : 0.7 + 0.5 * ppEaseOutCubic(ppUnit(progress / 0.4)))
             .onAppear {
-                withAnimation(.easeOut(duration: 0.5)) {
+                withAnimation(.easeOut(duration: 0.25)) {
                     progress = 1
                 }
             }
@@ -1088,61 +1036,6 @@ private struct FloatingScoreView: View {
     }
 }
 
-private struct PopBurstParticle: View {
-    let index: Int
-    let count: Int
-    let progress: CGFloat
-    let cellSize: CGFloat
-    let tone: BlockTone
-    let burstColor: Color
-    let intensity: CGFloat
-
-    var body: some View {
-        let delayedProgress = ppUnit((progress - delay) / (1 - delay))
-        let travelProgress = ppEaseOutCubic(delayedProgress)
-        let fadeProgress = ppSmoothStep(ppUnit((delayedProgress - 0.1) / 0.9))
-        let offset = burstOffset(progress: travelProgress)
-        let size = particleSize * (1 - fadeProgress * 0.5)
-
-        Circle()
-            .fill(particleColor.opacity(Double(1 - fadeProgress)))
-            .frame(width: size, height: size)
-            .offset(offset)
-            .opacity(delayedProgress > 0 ? 1 : 0)
-    }
-
-    private var delay: CGFloat {
-        CGFloat(index % 3) * 0.03
-    }
-
-    private var particleSize: CGFloat {
-        cellSize * (0.1 + CGFloat(index % 3) * 0.02 + intensity * 0.02)
-    }
-
-    private var particleColor: Color {
-        switch index % 4 {
-        case 0:
-            return tone.color
-        case 1:
-            return burstColor
-        case 2:
-            return .white
-        default:
-            return .ppMintButtonText.opacity(0.72)
-        }
-    }
-
-    // An even radial spray — particles fly out in every direction so the pop reads as bursting
-    // *in place* ("팡"), not spraying toward the old flick direction.
-    private func burstOffset(progress: CGFloat) -> CGSize {
-        let angle = (Double(index) / Double(max(count, 1))) * 2 * .pi
-        let distance = cellSize * (0.36 + intensity * 0.2 + CGFloat(index % 3) * 0.04)
-        let x = cos(angle) * Double(distance) * Double(progress)
-        let y = sin(angle) * Double(distance) * Double(progress)
-        return CGSize(width: CGFloat(x), height: CGFloat(y))
-    }
-}
-
 private func ppUnit(_ value: CGFloat) -> CGFloat {
     min(max(value, 0), 1)
 }
@@ -1150,11 +1043,6 @@ private func ppUnit(_ value: CGFloat) -> CGFloat {
 private func ppSmoothStep(_ value: CGFloat) -> CGFloat {
     let value = ppUnit(value)
     return value * value * (3 - 2 * value)
-}
-
-private func ppEaseOutCubic(_ value: CGFloat) -> CGFloat {
-    let remaining = 1 - ppUnit(value)
-    return 1 - remaining * remaining * remaining
 }
 
 private struct BoardCell: View {
@@ -1417,12 +1305,6 @@ private struct ShakeEffect: GeometryEffect {
             y: 0
         ))
     }
-}
-
-private extension BlockTone {
-    // The particle burst still reads its tint by tone; routed through the shared `fillColor` so a
-    // tone's color is defined exactly once (in DesignSystem).
-    var color: Color { fillColor }
 }
 
 private extension Direction {

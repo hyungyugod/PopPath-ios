@@ -21,10 +21,14 @@ Prepared on June 25, 2026.
 
 ## URLs
 
-Replace these after the Notion pages are published publicly.
+The Notion pages are created (with the real support email filled in). Publish each to the web
+(Notion: page ••• menu -> Publish) and paste the resulting public `*.notion.site` URL below and
+into App Store Connect.
 
-- Privacy Policy URL: `NOTION_PRIVACY_POLICY_URL_AFTER_PUBLISH`
-- Support URL: `NOTION_SUPPORT_URL_AFTER_PUBLISH`
+- Privacy Policy (Notion page): https://app.notion.com/p/38ae5a0eed53815ca62cf1899719e22a
+- Support (Notion page): https://app.notion.com/p/38ae5a0eed5381718be8f2718a5e56c8
+- Privacy Policy URL (public, after Publish): `PUBLISH_THEN_PASTE`
+- Support URL (public, after Publish): `PUBLISH_THEN_PASTE`
 - Marketing URL: leave blank
 
 ## Korean Metadata
@@ -189,7 +193,6 @@ The share button uses the standard iOS share sheet only when the user chooses to
 
 ## Remaining Manual Values
 
-- Replace `NOTION_PRIVACY_POLICY_URL_AFTER_PUBLISH`.
-- Replace `NOTION_SUPPORT_URL_AFTER_PUBLISH`.
+- Publish the two Notion pages to the web and paste the public `*.notion.site` URLs into the URLs section above and into App Store Connect.
 - Confirm the copyright owner name if `Hyungyu` should be changed.
-- Add a real support email to the Notion support/privacy pages before publishing.
+- Support email is already set to `hyungyugood0129@gmail.com` in both Notion pages; change it there if needed.

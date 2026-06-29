@@ -198,13 +198,15 @@ final class GameRulesTests: XCTestCase {
         model.loadBoardForTesting(board)
         XCTAssertFalse(GameRules.openPositions(in: model.board).contains(BoardPosition(row: 3, column: 2)))
 
-        model.swipe(row: 3, column: 5, hapticsEnabled: false, soundEnabled: false)
+        // reduceMotion: true so the escaping-block confirmation overlays are created — with motion
+        // on they're skipped (the block just vanishes), so these count assertions cover that path.
+        model.swipe(row: 3, column: 5, hapticsEnabled: false, soundEnabled: false, reduceMotion: true)
 
         XCTAssertNil(model.board[3][5])
         XCTAssertEqual(model.escapingBlocks.count, 1)
         XCTAssertTrue(GameRules.openPositions(in: model.board).contains(BoardPosition(row: 3, column: 2)))
 
-        model.swipe(row: 3, column: 2, hapticsEnabled: false, soundEnabled: false)
+        model.swipe(row: 3, column: 2, hapticsEnabled: false, soundEnabled: false, reduceMotion: true)
 
         XCTAssertNil(model.board[3][2])
         XCTAssertEqual(model.chain, 2)
@@ -218,7 +220,8 @@ final class GameRulesTests: XCTestCase {
         board[3][5] = PopBlock(direction: .right, tone: .mistBlue)
 
         model.loadBoardForTesting(board)
-        model.swipe(row: 3, column: 5, hapticsEnabled: false, soundEnabled: false)
+        // The escaping-block overlay is a reduce-motion-only confirmation now, so exercise that path.
+        model.swipe(row: 3, column: 5, hapticsEnabled: false, soundEnabled: false, reduceMotion: true)
 
         XCTAssertNil(model.board[3][5])
         XCTAssertEqual(model.escapingBlocks.count, 1)

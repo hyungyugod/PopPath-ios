@@ -435,6 +435,7 @@ struct BoardToast: Identifiable, Equatable {
         case "DOUBLE UNLOCK": return "길 두 개!"
         case "UNLOCK": return "길 열림"
         case "FRESH PATH": return "새 길!"
+        case "BOOM": return "펑!"
         case "BOARD CLEAR": return "싹쓸이!"
         case "NEW BEST": return "최고 기록!"
         case "ACHIEVEMENT": return "업적 달성!"
@@ -619,8 +620,10 @@ final class GameModel: ObservableObject {
     /// Flat points per block cleared by a bomb's detonation (its row + column). Not chain-scaled
     /// so a big blast doesn't dwarf everything else.
     private let bombDetonationReward = 12
-    /// Lifetime of a per-pop floating "+N" marker before it is retired.
-    private let floatingScoreLifetime: TimeInterval = 0.5
+    /// Lifetime of a per-pop floating "+N" marker before it is retired. Kept short so the markers
+    /// don't linger or stack on a fast streak — a quick in-place fade that confirms the points
+    /// without piling up concurrent animations.
+    private let floatingScoreLifetime: TimeInterval = 0.25
 
     init(makeInitialBoard: Bool = true, now: @escaping () -> Date = { Date() }) {
         self.now = now
@@ -927,7 +930,11 @@ final class GameModel: ObservableObject {
         column: Int,
         direction: Direction,
         hapticsEnabled: Bool,
-        soundEnabled: Bool = false
+        soundEnabled: Bool = false,
+        // Escaping-block overlays only render anything in reduce-motion (the quiet in-place fade);
+        // with motion on they're invisible, so we skip creating them entirely to avoid the per-pop
+        // board re-render churn. Defaults to motion-on for the tests/legacy callers.
+        reduceMotion: Bool = false
     ) {
         guard running,
               !isDealing,
@@ -967,7 +974,8 @@ final class GameModel: ObservableObject {
             block: block,
             popDirection: popDirection,
             hapticsEnabled: hapticsEnabled,
-            soundEnabled: soundEnabled
+            soundEnabled: soundEnabled,
+            reduceMotion: reduceMotion
         )
     }
 
@@ -977,26 +985,35 @@ final class GameModel: ObservableObject {
         block: PopBlock,
         popDirection: Direction,
         hapticsEnabled: Bool,
-        soundEnabled: Bool
+        soundEnabled: Bool,
+        reduceMotion: Bool
     ) {
         let openBeforeRemoval = openPositions
         let blockID = block.id
         let nextChain = chain + 1
-        // The escaping visual now bursts in place (expand + fade); popDirection only sets which
-        // arrow glyph the popped block shows (wild follows your flick). A bomb's spectacle is its
-        // detonation, handled below.
-        var poppedBlock = block
-        poppedBlock.direction = popDirection
-        poppedBlock.kind = .normal
-        let escapingBlock = EscapingBlock(
-            id: blockID,
-            block: poppedBlock,
-            row: row,
-            column: column,
-            chain: nextChain
-        )
-        addEscapingBlock(escapingBlock)
         updateCell(row: row, column: column, with: nil)
+        // The popped cell already cleared above. With motion on, the block just vanishes — no
+        // overlay — so we skip the escaping block entirely and save its per-pop board re-renders
+        // (append + async removal). Reduce-motion keeps a brief in-place tile fade as confirmation;
+        // popDirection only sets which arrow the faded copy shows (wild follows your flick).
+        if reduceMotion {
+            var poppedBlock = block
+            poppedBlock.direction = popDirection
+            poppedBlock.kind = .normal
+            let escapingBlock = EscapingBlock(
+                id: blockID,
+                block: poppedBlock,
+                row: row,
+                column: column,
+                chain: nextChain
+            )
+            addEscapingBlock(escapingBlock)
+            Task { [weak self] in
+                let lifetime = UInt64((escapingBlock.duration + 0.015) * 1_000_000_000)
+                try? await Task.sleep(nanoseconds: lifetime)
+                self?.removeEscapingBlock(id: blockID)
+            }
+        }
 
         roundMetrics.pops += 1
         chain = nextChain
@@ -1017,7 +1034,7 @@ final class GameModel: ObservableObject {
             // also pay a player "unlock" bonus for lanes the explosion (not a skillful flick)
             // freed — that would double-count and inflate unlock stats. Skipping it also means
             // no UNLOCK toast is enqueued, so the bomb's own "BOOM" toast actually surfaces.
-            detonateBomb(row: row, column: column, hapticsEnabled: hapticsEnabled, soundEnabled: soundEnabled)
+            detonateBomb(row: row, column: column, hapticsEnabled: hapticsEnabled, soundEnabled: soundEnabled, reduceMotion: reduceMotion)
         } else {
             awardUnlockBonusIfNeeded(openBeforeRemoval: openBeforeRemoval)
         }
@@ -1030,19 +1047,13 @@ final class GameModel: ObservableObject {
         surfaceLiveMilestones()
         // All rewards from this pop are now enqueued; surface the highest-priority one.
         drainEventQueue()
-
-        Task { [weak self] in
-            let lifetime = UInt64((escapingBlock.duration + 0.015) * 1_000_000_000)
-            try? await Task.sleep(nanoseconds: lifetime)
-            self?.removeEscapingBlock(id: blockID)
-        }
     }
 
     /// A bomb pops like a normal block, then clears every other block in its row and column,
     /// each as a little pop. Detonated blocks pay flat points and count as pops, but don't each
     /// advance the chain (the bomb's own pop already did). Detonated bombs do NOT chain-react —
     /// they clear as ordinary blocks, keeping the blast bounded.
-    private func detonateBomb(row: Int, column: Int, hapticsEnabled: Bool, soundEnabled: Bool) {
+    private func detonateBomb(row: Int, column: Int, hapticsEnabled: Bool, soundEnabled: Bool, reduceMotion: Bool) {
         var targets: [BoardPosition] = []
         for otherColumn in 0..<GameRules.columns where otherColumn != column {
             if board[row][otherColumn] != nil { targets.append(BoardPosition(row: row, column: otherColumn)) }
@@ -1055,22 +1066,27 @@ final class GameModel: ObservableObject {
         var nextBoard = board
         for position in targets {
             guard let hit = nextBoard[position.row][position.column] else { continue }
-            var poppedBlock = hit
-            poppedBlock.kind = .normal
-            let escaping = EscapingBlock(
-                id: hit.id,
-                block: poppedBlock,
-                row: position.row,
-                column: position.column,
-                chain: max(chain, 1)
-            )
-            addEscapingBlock(escaping)
             nextBoard[position.row][position.column] = nil
-            let escapingID = hit.id
-            Task { [weak self] in
-                let lifetime = UInt64((escaping.duration + 0.015) * 1_000_000_000)
-                try? await Task.sleep(nanoseconds: lifetime)
-                self?.removeEscapingBlock(id: escapingID)
+            // Reduce-motion only: a brief in-place fade overlay per cleared cell. With motion on the
+            // cells just clear, so we skip the per-cell escaping churn (one append + async removal
+            // each — costly when a blast clears a whole cross of cells at once).
+            if reduceMotion {
+                var poppedBlock = hit
+                poppedBlock.kind = .normal
+                let escaping = EscapingBlock(
+                    id: hit.id,
+                    block: poppedBlock,
+                    row: position.row,
+                    column: position.column,
+                    chain: max(chain, 1)
+                )
+                addEscapingBlock(escaping)
+                let escapingID = hit.id
+                Task { [weak self] in
+                    let lifetime = UInt64((escaping.duration + 0.015) * 1_000_000_000)
+                    try? await Task.sleep(nanoseconds: lifetime)
+                    self?.removeEscapingBlock(id: escapingID)
+                }
             }
         }
         board = nextBoard
@@ -1191,7 +1207,8 @@ final class GameModel: ObservableObject {
         row: Int,
         column: Int,
         hapticsEnabled: Bool,
-        soundEnabled: Bool = false
+        soundEnabled: Bool = false,
+        reduceMotion: Bool = false
     ) {
         guard GameRules.isInside(row: row, column: column),
               let direction = board[row][column]?.direction
@@ -1204,7 +1221,8 @@ final class GameModel: ObservableObject {
             column: column,
             direction: direction,
             hapticsEnabled: hapticsEnabled,
-            soundEnabled: soundEnabled
+            soundEnabled: soundEnabled,
+            reduceMotion: reduceMotion
         )
     }
 
@@ -1488,9 +1506,9 @@ final class GameModel: ObservableObject {
         floatingScores.append(marker)
         // Each live "+N" marker re-evaluates its SwiftUI body every animation frame (its offset
         // and opacity are derived from the marker's progress), so the cap is a direct rapid-fire
-        // perf lever. Trimmed 6 → 4: on a fast streak the markers blur together anyway, and fewer
-        // concurrent animations keeps the board smooth.
-        let maximumVisible = 4
+        // perf lever. On a fast streak the markers blur together anyway, and fewer concurrent
+        // animations keeps the board smooth.
+        let maximumVisible = 3
         if floatingScores.count > maximumVisible {
             floatingScores.removeFirst(floatingScores.count - maximumVisible)
         }
